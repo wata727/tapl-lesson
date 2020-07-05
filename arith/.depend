@@ -1,0 +1,16 @@
+core.cmo :
+core.cmx :
+main.cmo : \
+    parser.cmi \
+    core.cmo
+main.cmx : \
+    parser.cmx \
+    core.cmx
+parser.cmo : \
+    core.cmo \
+    parser.cmi
+parser.cmx : \
+    core.cmx \
+    parser.cmi
+parser.cmi : \
+    core.cmo
