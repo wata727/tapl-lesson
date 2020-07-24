@@ -11,8 +11,11 @@ let parse s =
 
 let process_command ctx cmd = match cmd with
   | Eval(fi, t) ->
+      let tyT = typeof ctx t in
       let t' = eval ctx t in
       printtm ctx t';
+      pr ": ";
+      printty tyT;
       force_newline();
       ctx
   | Bind(fi, x, bind) ->
