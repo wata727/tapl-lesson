@@ -23,8 +23,12 @@ let rec printtm t = match t with
   | TmPred(t1) -> printf "pred "; printtm t1
   | TmIsZero(t1) -> printf "iszero "; printtm t1
 
+let printty ty = match ty with
+    TyBool -> printf "Bool"
+  | TyNat -> printf "Nat"
+
 let main () =
   let ret = parse Sys.argv.(1) in
-  printtm(eval ret)
+  printtm(eval ret); printf " : "; printty(typeof ret)
 
 let _ = main()
