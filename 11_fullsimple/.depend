@@ -1,0 +1,25 @@
+core.cmo : \
+    support.cmo
+core.cmx : \
+    support.cmx
+main.cmo : \
+    support.cmo \
+    parser.cmi \
+    core.cmo
+main.cmx : \
+    support.cmx \
+    parser.cmx \
+    core.cmx
+parser.cmo : \
+    support.cmo \
+    core.cmo \
+    parser.cmi
+parser.cmx : \
+    support.cmx \
+    core.cmx \
+    parser.cmi
+parser.cmi : \
+    support.cmo \
+    core.cmo
+support.cmo :
+support.cmx :
