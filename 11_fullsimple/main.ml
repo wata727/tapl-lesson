@@ -15,7 +15,7 @@ let process_command ctx cmd = match cmd with
       let t' = eval ctx t in
       printtm ctx t';
       pr ": ";
-      printty tyT;
+      printty ctx tyT;
       force_newline();
       ctx
   | Bind(fi, x, bind) ->

@@ -2,8 +2,13 @@ open Format
 open Support
 
 type ty =
-    TyArr of ty * ty
+    TyVar of int * int
+  | TyId of string
+  | TyArr of ty * ty
   | TyBool
+  | TyString
+  | TyFloat
+  | TyNat
 
 type term =
     TmVar of info * int * int
@@ -12,6 +17,13 @@ type term =
   | TmTrue of info
   | TmFalse of info
   | TmIf of info * term * term * term
+  | TmString of info * string
+  | TmFloat of info * float
+  | TmTimesfloat of info * term * term
+  | TmZero of info
+  | TmSucc of info * term
+  | TmPred of info * term
+  | TmIsZero of info * term
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -20,8 +32,19 @@ let tmInfo t = match t with
   | TmTrue(fi) -> fi
   | TmFalse(fi) -> fi
   | TmIf(fi, _, _, _) -> fi
+  | TmString(fi, _) -> fi
+  | TmFloat(fi, _) -> fi
+  | TmTimesfloat(fi, _, _) -> fi
+  | TmZero(fi) -> fi
+  | TmSucc(fi, _) -> fi
+  | TmPred(fi, _) -> fi
+  | TmIsZero(fi, _) -> fi
 
-type binding = NameBind | VarBind of ty
+type binding =
+    NameBind
+  | TyVarBind
+  | VarBind of ty
+  | TyAddBind of ty
 type context = (string * binding) list
 
 let emptycontext = []
@@ -44,24 +67,36 @@ type command =
   | Eval of info * term
   | Bind of info * string * binding
 
-let rec printty_Type tyT = match tyT with
-    tyT -> printty_ArrowType tyT
-and printty_ArrowType tyT = match tyT with
+let rec printty_Type ctx tyT = match tyT with
+    tyT -> printty_ArrowType ctx tyT
+and printty_ArrowType ctx tyT = match tyT with
     TyArr(tyT1, tyT2) ->
-      printty_AType tyT1;
+      printty_AType ctx tyT1;
       pr " -> ";
-      printty_ArrowType tyT2;
-  | tyT -> printty_AType tyT
-and printty_AType tyT = match tyT with
-    TyBool -> pr "Bool"
-  | tyT -> pr "("; printty_Type tyT; pr ")"
+      printty_ArrowType ctx tyT2;
+  | tyT -> printty_AType ctx tyT
+and printty_AType ctx tyT = match tyT with
+    TyVar(x,n) ->
+      if ctxlength ctx = n then
+        pr (index2name dummyinfo ctx x)
+      else
+        pr ("[bad index: " ^ (string_of_int x) ^ "/" ^ (string_of_int n)
+          ^ " in {"
+          ^ (List.fold_left (fun s (x,_) -> s ^ " " ^ x) "" ctx)
+          ^ " }]")
+  | TyId(b) -> pr b
+  | TyBool -> pr "Bool"
+  | TyString -> pr "String"
+  | TyFloat -> pr "Float"
+  | TyNat -> pr "Nat"
+  | tyT -> pr "("; printty_Type ctx tyT; pr ")"
 
-let printty tyT = printty_Type tyT
+let printty ctx tyT = printty_Type ctx tyT
 
 let rec printtm ctx t = match t with
     TmAbs(fi, x, tyT1, t1) ->
       let (ctx', x') = pickfreshname ctx x in
-      pr "(lambda "; pr x'; pr ":"; printty tyT1; pr ". "; printtm ctx' t1; pr ")"
+      pr "(lambda "; pr x'; pr ":"; printty ctx tyT1; pr ". "; printtm ctx' t1; pr ")"
   | TmApp(fi, t1, t2) ->
       pr "("; printtm ctx t1; pr " "; printtm ctx t2; pr ")"
   | TmVar(fi, x, n) ->
@@ -73,10 +108,24 @@ let rec printtm ctx t = match t with
   | TmFalse(fi) -> pr "false"
   | TmIf(fi, t1, t2, t3) ->
       pr "if "; printtm ctx t1; pr " then "; printtm ctx t2; pr " else "; printtm ctx t3
+  | TmString(fi, s) -> pr ("\"" ^ s ^ "\"")
+  | TmFloat(fi, s) -> pr (string_of_float s)
+  | TmTimesfloat(fi, t1, t2) -> pr "timesfloat "; printtm ctx t1; pr " "; printtm ctx t2
+  | TmZero(fi) -> pr "0"
+  | TmSucc(fi, t1) ->
+      let rec f n t = match t with
+          TmZero(_) -> pr (string_of_int n)
+        | TmSucc(_,s) -> f (n+1) s
+        | _ -> (pr "(succ "; printtm ctx t1; pr ")")
+      in f 1 t1
+  | TmPred(fi, t1) -> pr "pred "; printtm ctx t1
+  | TmIsZero(fi, t1) -> pr "iszero "; printtm ctx t1
 
 let prbinding ctx b = match b with
     NameBind -> () 
-  | VarBind(tyT) -> pr ": "; printty tyT
+  | TyVarBind -> ()
+  | VarBind(tyT) -> pr ": "; printty ctx tyT
+  | TyAddBind(tyT) -> pr "= "; printty ctx tyT
 
 let termShift d t =
   let rec walk c t = match t with
@@ -87,6 +136,13 @@ let termShift d t =
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
+  | TmString _ as t -> t
+  | TmFloat _ as t -> t
+  | TmTimesfloat(fi, t1, t2) -> TmTimesfloat(fi, walk c t1, walk c t2)
+  | TmZero(fi) -> TmZero(fi)
+  | TmSucc(fi, t1) -> TmSucc(fi, walk c t1)
+  | TmPred(fi, t1) -> TmPred(fi, walk c t1)
+  | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
   in walk 0 t
 
 let termSubst j s t =
@@ -97,15 +153,30 @@ let termSubst j s t =
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
+  | TmString _ as t -> t
+  | TmFloat _ as t -> t
+  | TmTimesfloat(fi, t1, t2) -> TmTimesfloat(fi, walk c t1, walk c t2)
+  | TmZero(fi) -> TmZero(fi)
+  | TmSucc(fi, t1) -> TmSucc(fi, walk c t1)
+  | TmPred(fi, t1) -> TmPred(fi, walk c t1)
+  | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
   in walk 0 t
 
 let termSubstTop s t =
   termShift (-1) (termSubst 0 (termShift 1 s) t)
 
+let rec isnumericval ctx t = match t with
+    TmZero(_) -> true
+  | TmSucc(_, t1) -> isnumericval ctx t1
+  | _ -> false
+
 let rec isval ctx t = match t with
     TmTrue(_) -> true
   | TmFalse(_) -> true
   | TmAbs(_, _, _, _) -> true
+  | TmString _ -> true
+  | TmFloat _ -> true
+  | t when isnumericval ctx t -> true
   | _ -> false
 
 exception NoRuleApplies
@@ -124,6 +195,26 @@ let rec eval1 ctx t = match t with
   | TmIf(fi, t1, t2, t3) ->
       let t1' = eval1 ctx t1 in
       TmIf(fi, t1', t2, t3)
+  | TmTimesfloat(fi, TmFloat(_, f1), TmFloat(_, f2)) -> TmFloat(fi, f1 *. f2)
+  | TmTimesfloat(fi, (TmFloat(_, f1) as t1), t2) ->
+      let t2' = eval1 ctx t2 in
+      TmTimesfloat(fi, t1, t2')
+  | TmTimesfloat(fi, t1, t2) ->
+      let t1' = eval1 ctx t1 in
+      TmTimesfloat(fi, t1', t2)
+  | TmSucc(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmSucc(fi, t1')
+  | TmPred(_, TmZero(_)) -> TmZero(dummyinfo)
+  | TmPred(_, TmSucc(_,nv1)) when (isnumericval ctx nv1) -> nv1
+  | TmPred(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmPred(fi, t1')
+  | TmIsZero(fi, TmZero(_)) -> TmTrue(dummyinfo)
+  | TmIsZero(fi, TmSucc(_,nv1)) when (isnumericval ctx nv1) -> TmFalse(dummyinfo)
+  | TmIsZero(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmIsZero(fi, t1')
   | _ ->
       raise NoRuleApplies
 
@@ -165,3 +256,19 @@ let rec typeof ctx t = match t with
         if (=) tyT2 (typeof ctx t3) then tyT2
         else error fi "arms of conditional have different types"
       else error fi "guard of conditional not a boolean"
+  | TmString _ -> TyString
+  | TmFloat _ -> TyFloat
+  | TmTimesfloat(fi, t1, t2) ->
+      if (=) (typeof ctx t1) TyFloat
+      && (=) (typeof ctx t2) TyFloat then TyFloat
+      else error fi "argument of timesfloat is not a number"
+  | TmZero(fi) -> TyNat
+  | TmSucc(fi, t1) ->
+      if (=) (typeof ctx t1) TyNat then TyNat
+      else error fi "argument of succ is not a number"
+  | TmPred(fi, t1) ->
+      if (=) (typeof ctx t1) TyNat then TyNat
+      else error fi "argument of pred is not a number"
+  | TmIsZero(fi, t1) ->
+      if (=) (typeof ctx t1) TyNat then TyBool
+      else error fi "argument of iszero is not a number"
