@@ -28,6 +28,8 @@ true: Bool
 T = Nat -> Nat
 
 # 11.2 The Unit Type
+% ./f "unit;"
+unit: Unit
 
 # 11.3 Derived Forms: Sequencing and Wildcards
 

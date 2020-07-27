@@ -8,6 +8,7 @@ type ty =
   | TyBool
   | TyString
   | TyFloat
+  | TyUnit
   | TyNat
 
 type term =
@@ -24,6 +25,7 @@ type term =
   | TmSucc of info * term
   | TmPred of info * term
   | TmIsZero of info * term
+  | TmUnit of info
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -39,6 +41,7 @@ let tmInfo t = match t with
   | TmSucc(fi, _) -> fi
   | TmPred(fi, _) -> fi
   | TmIsZero(fi, _) -> fi
+  | TmUnit(fi) -> fi
 
 type binding =
     NameBind
@@ -88,6 +91,7 @@ and printty_AType ctx tyT = match tyT with
   | TyBool -> pr "Bool"
   | TyString -> pr "String"
   | TyFloat -> pr "Float"
+  | TyUnit -> pr "Unit"
   | TyNat -> pr "Nat"
   | tyT -> pr "("; printty_Type ctx tyT; pr ")"
 
@@ -120,6 +124,7 @@ let rec printtm ctx t = match t with
       in f 1 t1
   | TmPred(fi, t1) -> pr "pred "; printtm ctx t1
   | TmIsZero(fi, t1) -> pr "iszero "; printtm ctx t1
+  | TmUnit(fi) -> pr "unit"
 
 let prbinding ctx b = match b with
     NameBind -> () 
@@ -143,6 +148,7 @@ let termShift d t =
   | TmSucc(fi, t1) -> TmSucc(fi, walk c t1)
   | TmPred(fi, t1) -> TmPred(fi, walk c t1)
   | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
+  | TmUnit(fi) as t -> t
   in walk 0 t
 
 let termSubst j s t =
@@ -160,6 +166,7 @@ let termSubst j s t =
   | TmSucc(fi, t1) -> TmSucc(fi, walk c t1)
   | TmPred(fi, t1) -> TmPred(fi, walk c t1)
   | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
+  | TmUnit(fi) as t -> t
   in walk 0 t
 
 let termSubstTop s t =
@@ -175,6 +182,7 @@ let rec isval ctx t = match t with
   | TmFalse(_) -> true
   | TmAbs(_, _, _, _) -> true
   | TmString _ -> true
+  | TmUnit(_) -> true
   | TmFloat _ -> true
   | t when isnumericval ctx t -> true
   | _ -> false
@@ -272,3 +280,4 @@ let rec typeof ctx t = match t with
   | TmIsZero(fi, t1) ->
       if (=) (typeof ctx t1) TyNat then TyBool
       else error fi "argument of iszero is not a number"
+  | TmUnit(fi) -> TyUnit

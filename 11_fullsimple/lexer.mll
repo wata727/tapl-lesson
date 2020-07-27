@@ -22,11 +22,13 @@ rule main = parse
   | "Bool"                           { Parser.BOOL(info lexbuf) }
   | "String"                         { Parser.USTRING(info lexbuf) }
   | "Float"                          { Parser.UFLOAT(info lexbuf) }
+  | "Unit"                           { Parser.UUNIT(info lexbuf) }
   | "Nat"                            { Parser.NAT(info lexbuf) }
   | "timesfloat"                     { Parser.TIMESFLOAT(info lexbuf) }
   | "succ"                           { Parser.SUCC(info lexbuf) }
   | "pred"                           { Parser.PRED(info lexbuf) }
   | "iszero"                         { Parser.ISZERO(info lexbuf) }
+  | "unit"                           { Parser.UNIT(info lexbuf) }
   | "."                              { Parser.DOT(info lexbuf) }
   | "("                              { Parser.LPAREN(info lexbuf) }
   | ")"                              { Parser.RPAREN(info lexbuf) }

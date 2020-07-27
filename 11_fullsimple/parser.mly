@@ -13,6 +13,8 @@ open Support
 %token <Support.info> USTRING
 %token <Support.info> UFLOAT
 %token <Support.info> TIMESFLOAT
+%token <Support.info> UUNIT
+%token <Support.info> UNIT
 %token <Support.info> SUCC
 %token <Support.info> PRED
 %token <Support.info> ISZERO
@@ -57,6 +59,7 @@ AType: LPAREN Type RPAREN { $2 }
      | BOOL               { fun ctx -> TyBool }
      | USTRING            { fun ctx -> TyString }
      | UFLOAT             { fun ctx -> TyFloat }
+     | UUNIT              { fun ctx -> TyUnit }
      | NAT                { fun ctx -> TyNat }
 
 ArrowType: AType ARROW ArrowType { fun ctx -> TyArr($1 ctx, $3 ctx) }
@@ -84,6 +87,7 @@ ATerm: LPAREN Term RPAREN { $2 }
      | TRUE               { fun ctx -> TmTrue($1) }
      | FALSE              { fun ctx -> TmFalse($1) }
      | STRINGV            { fun ctx -> TmString($1.i,$1.v) }
+     | UNIT               { fun ctx -> TmUnit($1) }
      | FLOATV             { fun ctx -> TmFloat($1.i,$1.v) }
      | INTV               { fun ctx -> let rec f n = match n with
                                            0 -> TmZero($1.i)
