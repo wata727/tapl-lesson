@@ -47,7 +47,7 @@ type binding =
     NameBind
   | TyVarBind
   | VarBind of ty
-  | TyAddBind of ty
+  | TyAbbBind of ty
 type context = (string * binding) list
 
 let emptycontext = []
@@ -130,7 +130,7 @@ let prbinding ctx b = match b with
     NameBind -> () 
   | TyVarBind -> ()
   | VarBind(tyT) -> pr ": "; printty ctx tyT
-  | TyAddBind(tyT) -> pr "= "; printty ctx tyT
+  | TyAbbBind(tyT) -> pr "= "; printty ctx tyT
 
 let termShift d t =
   let rec walk c t = match t with
@@ -231,16 +231,54 @@ let rec eval ctx t =
       in eval ctx t'
   with NoRuleApplies -> t
 
+let typeShiftAbove d c tyT =
+  let rec walk c tyT = match tyT with
+    TyVar(x, n) -> if x>=c then TyVar(x+d,n+d) else TyVar(x,n+d)
+  | TyId(b) as tyT -> tyT
+  | TyString -> TyString
+  | TyUnit -> TyUnit
+  | TyFloat -> TyFloat
+  | TyBool -> TyBool
+  | TyNat -> TyNat
+  | TyArr(tyT1,tyT2) -> TyArr(walk c tyT1,walk c tyT2)
+  in walk c tyT
+
+let typeShift d tyT = typeShiftAbove d 0 tyT
+
+let bindingshift d bind = match bind with
+    NameBind -> NameBind
+  | TyVarBind -> TyVarBind
+  | VarBind(tyT) -> VarBind(typeShift d tyT)
+  | TyAbbBind(tyT) -> TyAbbBind(typeShift d tyT)
+
 let getbinding fi ctx i =
   try
     let (_, bind) = List.nth ctx i in
-    bind
+    bindingshift (i+1) bind
   with Failure _ ->
     let msg = Printf.sprintf "Variable lookup failure: offset: %d, ctx size: %d" in
     error fi (msg i (List.length ctx))
 let getTypeFromContext fi ctx i = match getbinding fi ctx i with
     VarBind(tyT) -> tyT
   | _ -> error fi ("getTypeFromContext: Wrong kind of binding for variable " ^ (index2name fi ctx i))
+
+let istyabb ctx i = match getbinding dummyinfo ctx i with
+    TyAbbBind(tyT) -> true
+  | _ -> false
+
+let gettyabb ctx i = match getbinding dummyinfo ctx i with
+    TyAbbBind(tyT) -> tyT
+  | _ -> raise NoRuleApplies
+
+let rec computety ctx tyT = match tyT with
+    TyVar(i, _) when istyabb ctx i -> gettyabb ctx i
+  | _ -> raise NoRuleApplies
+
+let rec simplifyty ctx tyT =
+  try
+    let tyT' = computety ctx tyT in
+    simplifyty ctx tyT'
+  with NoRuleApplies -> tyT
 
 let rec typeof ctx t = match t with
     TmVar(fi, i, _) -> getTypeFromContext fi ctx i
@@ -251,7 +289,7 @@ let rec typeof ctx t = match t with
   | TmApp(fi, t1, t2) ->
       let tyT1 = typeof ctx t1 in
       let tyT2 = typeof ctx t2 in
-      (match tyT1 with
+      (match simplifyty ctx tyT1 with
           TyArr(tyT11, tyT12) ->
             if (=) tyT2 tyT11 then tyT12
             else error fi "parameter type mismatch"

@@ -24,14 +24,13 @@ true: Bool
 3: Nat
 % ./f "lambda x:A. x;"
 (lambda x:A. x): A -> A
-% ./f "T = Nat->Nat;"
+% ./f "T = Nat -> Nat; lambda f:T. lambda x:Nat. f (f x);"
 T = Nat -> Nat
+(lambda f:T. (lambda x:Nat. (f (f x)))): T -> Nat -> Nat
 
 # 11.2 The Unit Type
 % ./f "unit;"
 unit: Unit
-
-# 11.3 Derived Forms: Sequencing and Wildcards
 
 # 11.4 Ascription
 

@@ -66,7 +66,7 @@ ArrowType: AType ARROW ArrowType { fun ctx -> TyArr($1 ctx, $3 ctx) }
          | AType                 { $1 }
 
 TyBinder:         { fun ctx -> TyVarBind }
-        | EQ Type { fun ctx -> TyAddBind($2 ctx) }
+        | EQ Type { fun ctx -> TyAbbBind($2 ctx) }
 
 Term: AppTerm                { $1 }
     | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
