@@ -37,6 +37,13 @@ unit: Unit
 2: Nat
 
 # 11.4 Ascription
+% ./f "1 as Nat;"
+1: Nat
+% ./f "1 as String";
+:1.2: body of as-term does not have the expected type
+% ./f "T = Nat -> Nat; (lambda x:Nat. x) as T;"
+T = Nat -> Nat
+(lambda x:Nat. x): T
 
 # 11.5 Let Bindings
 

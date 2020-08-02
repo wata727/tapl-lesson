@@ -26,6 +26,7 @@ type term =
   | TmPred of info * term
   | TmIsZero of info * term
   | TmUnit of info
+  | TmAscribe of info * term * ty
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -42,6 +43,7 @@ let tmInfo t = match t with
   | TmPred(fi, _) -> fi
   | TmIsZero(fi, _) -> fi
   | TmUnit(fi) -> fi
+  | TmAscribe(fi, _, _) -> fi
 
 type binding =
     NameBind
@@ -125,12 +127,27 @@ let rec printtm ctx t = match t with
   | TmPred(fi, t1) -> pr "pred "; printtm ctx t1
   | TmIsZero(fi, t1) -> pr "iszero "; printtm ctx t1
   | TmUnit(fi) -> pr "unit"
+  | TmAscribe(fi, t1, tyT1) -> printtm ctx t1; pr " as "; printty ctx tyT1
 
 let prbinding ctx b = match b with
     NameBind -> () 
   | TyVarBind -> ()
   | VarBind(tyT) -> pr ": "; printty ctx tyT
   | TyAbbBind(tyT) -> pr "= "; printty ctx tyT
+
+let typeShiftAbove d c tyT =
+  let rec walk c tyT = match tyT with
+    TyVar(x, n) -> if x>=c then TyVar(x+d,n+d) else TyVar(x,n+d)
+  | TyId(b) as tyT -> tyT
+  | TyString -> TyString
+  | TyUnit -> TyUnit
+  | TyFloat -> TyFloat
+  | TyBool -> TyBool
+  | TyNat -> TyNat
+  | TyArr(tyT1,tyT2) -> TyArr(walk c tyT1,walk c tyT2)
+  in walk c tyT
+
+let typeShift d tyT = typeShiftAbove d 0 tyT
 
 let termShift d t =
   let rec walk c t = match t with
@@ -149,6 +166,7 @@ let termShift d t =
   | TmPred(fi, t1) -> TmPred(fi, walk c t1)
   | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
   | TmUnit(fi) as t -> t
+  | TmAscribe(fi, t1, tyT1) -> TmAscribe(fi, walk c t1, typeShiftAbove d c tyT1)
   in walk 0 t
 
 let termSubst j s t =
@@ -167,6 +185,7 @@ let termSubst j s t =
   | TmPred(fi, t1) -> TmPred(fi, walk c t1)
   | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
   | TmUnit(fi) as t -> t
+  | TmAscribe(fi, t1, tyT1) -> TmAscribe(fi, walk c t1, tyT1)
   in walk 0 t
 
 let termSubstTop s t =
@@ -223,6 +242,10 @@ let rec eval1 ctx t = match t with
   | TmIsZero(fi, t1) ->
       let t1' = eval1 ctx t1 in
       TmIsZero(fi, t1')
+  | TmAscribe(fi, v1, tyT) when isval ctx v1 -> v1
+  | TmAscribe(fi, t1, tyT) ->
+      let t1' = eval1 ctx t1 in
+      TmAscribe(fi, t1', tyT)
   | _ ->
       raise NoRuleApplies
 
@@ -230,20 +253,6 @@ let rec eval ctx t =
   try let t' = eval1 ctx t
       in eval ctx t'
   with NoRuleApplies -> t
-
-let typeShiftAbove d c tyT =
-  let rec walk c tyT = match tyT with
-    TyVar(x, n) -> if x>=c then TyVar(x+d,n+d) else TyVar(x,n+d)
-  | TyId(b) as tyT -> tyT
-  | TyString -> TyString
-  | TyUnit -> TyUnit
-  | TyFloat -> TyFloat
-  | TyBool -> TyBool
-  | TyNat -> TyNat
-  | TyArr(tyT1,tyT2) -> TyArr(walk c tyT1,walk c tyT2)
-  in walk c tyT
-
-let typeShift d tyT = typeShiftAbove d 0 tyT
 
 let bindingshift d bind = match bind with
     NameBind -> NameBind
@@ -319,3 +328,6 @@ let rec typeof ctx t = match t with
       if (=) (typeof ctx t1) TyNat then TyBool
       else error fi "argument of iszero is not a number"
   | TmUnit(fi) -> TyUnit
+  | TmAscribe(fi, t1, tyT) ->
+      if (=) (simplifyty ctx (typeof ctx t1)) (simplifyty ctx tyT) then tyT
+      else error fi "body of as-term does not have the expected type"

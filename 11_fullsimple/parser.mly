@@ -4,6 +4,7 @@ open Support
 %}
 
 %token <Support.info> LAMBDA
+%token <Support.info> AS
 %token <Support.info> IF
 %token <Support.info> THEN
 %token <Support.info> ELSE
@@ -73,14 +74,17 @@ Term: AppTerm                           { $1 }
     | LAMBDA USCORE COLON Type DOT Term { fun ctx -> let ctx1 = addname ctx "_" in TmAbs($1,"_",$4 ctx, $6 ctx1) }
     | IF Term THEN Term ELSE Term       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
 
-AppTerm: ATerm                  { $1 }
-       | AppTerm ATerm          { fun ctx -> let e1 = $1 ctx in
-                                             let e2 = $2 ctx in
-                                             TmApp(tmInfo e1,e1,e2) }
-       | TIMESFLOAT ATerm ATerm { fun ctx -> TmTimesfloat($1,$2 ctx,$3 ctx) }
-       | SUCC ATerm             { fun ctx -> TmSucc($1,$2 ctx) }
-       | PRED ATerm             { fun ctx -> TmPred($1,$2 ctx) }
-       | ISZERO ATerm           { fun ctx -> TmIsZero($1,$2 ctx) }
+AppTerm: AscribeTerm                        { $1 }
+       | AppTerm AscribeTerm                { fun ctx -> let e1 = $1 ctx in
+                                                         let e2 = $2 ctx in
+                                                         TmApp(tmInfo e1,e1,e2) }
+       | TIMESFLOAT AscribeTerm AscribeTerm { fun ctx -> TmTimesfloat($1,$2 ctx,$3 ctx) }
+       | SUCC AscribeTerm                   { fun ctx -> TmSucc($1,$2 ctx) }
+       | PRED AscribeTerm                   { fun ctx -> TmPred($1,$2 ctx) }
+       | ISZERO AscribeTerm                 { fun ctx -> TmIsZero($1,$2 ctx) }
+
+AscribeTerm: ATerm AS Type { fun ctx -> TmAscribe($2, $1 ctx, $3 ctx) }
+           | ATerm         { $1 }
 
 TermSeq: Term              { $1 }
        | Term SEMI TermSeq { fun ctx -> TmApp($2, TmAbs($2, "_", TyUnit, $3 (addname ctx "_")), $1 ctx) }

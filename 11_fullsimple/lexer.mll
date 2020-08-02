@@ -14,6 +14,7 @@ let text = Lexing.lexeme
 rule main = parse
     [' ' '\n' '\r' '\t']+            { main lexbuf }
   | "lambda"                         { Parser.LAMBDA(info lexbuf) }
+  | "as"                             { Parser.AS(info lexbuf) }
   | "if"                             { Parser.IF(info lexbuf) }
   | "then"                           { Parser.THEN(info lexbuf) }
   | "else"                           { Parser.ELSE(info lexbuf) }
