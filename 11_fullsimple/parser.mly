@@ -68,7 +68,7 @@ ArrowType: AType ARROW ArrowType { fun ctx -> TyArr($1 ctx, $3 ctx) }
 TyBinder:         { fun ctx -> TyVarBind }
         | EQ Type { fun ctx -> TyAbbBind($2 ctx) }
 
-Term: AppTerm                { $1 }
+Term: AppTerm                           { $1 }
     | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
     | LAMBDA USCORE COLON Type DOT Term { fun ctx -> let ctx1 = addname ctx "_" in TmAbs($1,"_",$4 ctx, $6 ctx1) }
     | IF Term THEN Term ELSE Term       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
@@ -82,14 +82,17 @@ AppTerm: ATerm                  { $1 }
        | PRED ATerm             { fun ctx -> TmPred($1,$2 ctx) }
        | ISZERO ATerm           { fun ctx -> TmIsZero($1,$2 ctx) }
 
-ATerm: LPAREN Term RPAREN { $2 }
-     | LCID               { fun ctx -> TmVar($1.i, name2index $1.i ctx $1.v, ctxlength ctx) }
-     | TRUE               { fun ctx -> TmTrue($1) }
-     | FALSE              { fun ctx -> TmFalse($1) }
-     | STRINGV            { fun ctx -> TmString($1.i,$1.v) }
-     | UNIT               { fun ctx -> TmUnit($1) }
-     | FLOATV             { fun ctx -> TmFloat($1.i,$1.v) }
-     | INTV               { fun ctx -> let rec f n = match n with
-                                           0 -> TmZero($1.i)
-                                         | n -> TmSucc($1.i,f (n-1))
-                                       in f $1.v }
+TermSeq: Term              { $1 }
+       | Term SEMI TermSeq { fun ctx -> TmApp($2, TmAbs($2, "_", TyUnit, $3 (addname ctx "_")), $1 ctx) }
+
+ATerm: LPAREN TermSeq RPAREN { $2 }
+     | LCID                  { fun ctx -> TmVar($1.i, name2index $1.i ctx $1.v, ctxlength ctx) }
+     | TRUE                  { fun ctx -> TmTrue($1) }
+     | FALSE                 { fun ctx -> TmFalse($1) }
+     | STRINGV               { fun ctx -> TmString($1.i,$1.v) }
+     | UNIT                  { fun ctx -> TmUnit($1) }
+     | FLOATV                { fun ctx -> TmFloat($1.i,$1.v) }
+     | INTV                  { fun ctx -> let rec f n = match n with
+                                              0 -> TmZero($1.i)
+                                            | n -> TmSucc($1.i,f (n-1))
+                                          in f $1.v }

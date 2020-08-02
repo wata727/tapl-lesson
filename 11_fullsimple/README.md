@@ -32,6 +32,10 @@ T = Nat -> Nat
 % ./f "unit;"
 unit: Unit
 
+# 11.3 Derived Forms: Sequencing and Wildcards
+% ./f "((lambda _:Bool. unit)true; 2);"
+2: Nat
+
 # 11.4 Ascription
 
 # 11.5 Let Bindings
