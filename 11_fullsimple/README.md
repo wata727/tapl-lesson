@@ -46,6 +46,8 @@ T = Nat -> Nat
 (lambda x:Nat. x): T
 
 # 11.5 Let Bindings
+% ./f "let x=true in x;"
+true: Bool
 
 # 11.7 Tuples
 

@@ -15,6 +15,7 @@ type term =
     TmVar of info * int * int
   | TmAbs of info * string * ty * term
   | TmApp of info * term * term
+  | TmLet of info * string * term * term
   | TmTrue of info
   | TmFalse of info
   | TmIf of info * term * term * term
@@ -32,6 +33,7 @@ let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
   | TmAbs(fi, _, _, _) -> fi
   | TmApp(fi, _, _) -> fi
+  | TmLet(fi, _, _, _) -> fi
   | TmTrue(fi) -> fi
   | TmFalse(fi) -> fi
   | TmIf(fi, _, _, _) -> fi
@@ -105,6 +107,8 @@ let rec printtm ctx t = match t with
       pr "(lambda "; pr x'; pr ":"; printty ctx tyT1; pr ". "; printtm ctx' t1; pr ")"
   | TmApp(fi, t1, t2) ->
       pr "("; printtm ctx t1; pr " "; printtm ctx t2; pr ")"
+  | TmLet(fi, x, t1, t2) ->
+      pr "let "; pr x; pr " = "; printtm ctx t1; pr " in "; printtm (addname ctx x) t2
   | TmVar(fi, x, n) ->
       if ctxlength ctx = n then
         pr (index2name fi ctx x)
@@ -155,6 +159,7 @@ let termShift d t =
                        else TmVar(fi, x, n+d)
   | TmAbs(fi, x, tyT1, t1) -> TmAbs(fi, x, tyT1, walk (c+1) t1)
   | TmApp(fi, t1, t2) -> TmApp(fi, walk c t1, walk c t2)
+  | TmLet(fi, x, t1, t2) -> TmLet(fi, x, walk c t1, walk (c+1) t2)
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
@@ -174,6 +179,7 @@ let termSubst j s t =
     TmVar(fi, x, n) -> if x = j+c then termShift c s else TmVar(fi, x, n)
   | TmAbs(fi, x, tyT1, t1) -> TmAbs(fi, x, tyT1, walk (c+1) t1)
   | TmApp(fi, t1, t2) -> TmApp(fi, walk c t1, walk c t2)
+  | TmLet(fi, x, t1, t2) -> TmLet(fi, x, walk c t1, walk (c+1) t2)
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
@@ -217,6 +223,11 @@ let rec eval1 ctx t = match t with
   | TmApp(fi, t1, t2) ->
       let t1' = eval1 ctx t1 in
       TmApp(fi, t1', t2)
+  | TmLet(fi, x, v1, t2) when isval ctx v1 ->
+      termSubstTop v1 t2
+  | TmLet(fi, x, t1, t2) ->
+      let t1' = eval1 ctx t1 in
+      TmLet(fi, x, t1', t2)
   | TmIf(_, TmTrue(_), t2, t3) -> t2
   | TmIf(_, TmFalse(_), t2, t3) -> t3
   | TmIf(fi, t1, t2, t3) ->
@@ -303,6 +314,10 @@ let rec typeof ctx t = match t with
             if (=) tyT2 tyT11 then tyT12
             else error fi "parameter type mismatch"
         | _ -> error fi "arrow type expected")
+  | TmLet(fi, x, t1, t2) ->
+      let tyT1 = typeof ctx t1 in
+      let ctx' = addbinding ctx x (VarBind(tyT1)) in
+      typeShift (-1) (typeof ctx' t2)
   | TmTrue(fi) -> TyBool
   | TmFalse(fi) -> TyBool
   | TmIf(fi, t1, t2, t3) ->

@@ -4,6 +4,8 @@ open Support
 %}
 
 %token <Support.info> LAMBDA
+%token <Support.info> LET
+%token <Support.info> IN
 %token <Support.info> AS
 %token <Support.info> IF
 %token <Support.info> THEN
@@ -73,6 +75,8 @@ Term: AppTerm                           { $1 }
     | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
     | LAMBDA USCORE COLON Type DOT Term { fun ctx -> let ctx1 = addname ctx "_" in TmAbs($1,"_",$4 ctx, $6 ctx1) }
     | IF Term THEN Term ELSE Term       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
+    | LET LCID EQ Term IN Term          { fun ctx -> TmLet($1, $2.v, $4 ctx, $6 (addname ctx $2.v)) }
+    | LET USCORE EQ Term IN Term        { fun ctx -> TmLet($1, "_", $4 ctx, $6 (addname ctx "_")) }
 
 AppTerm: AscribeTerm                        { $1 }
        | AppTerm AscribeTerm                { fun ctx -> let e1 = $1 ctx in
