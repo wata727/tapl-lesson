@@ -5,6 +5,7 @@ type ty =
     TyVar of int * int
   | TyId of string
   | TyArr of ty * ty
+  | TyRecord of (string * ty) list
   | TyBool
   | TyString
   | TyFloat
@@ -28,6 +29,8 @@ type term =
   | TmIsZero of info * term
   | TmUnit of info
   | TmAscribe of info * term * ty
+  | TmRecord of info * (string * term) list
+  | TmProj of info * term * string
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -46,6 +49,8 @@ let tmInfo t = match t with
   | TmIsZero(fi, _) -> fi
   | TmUnit(fi) -> fi
   | TmAscribe(fi, _, _) -> fi
+  | TmRecord(fi, _) -> fi
+  | TmProj(fi, _, _) -> fi
 
 type binding =
     NameBind
@@ -91,6 +96,13 @@ and printty_AType ctx tyT = match tyT with
           ^ " in {"
           ^ (List.fold_left (fun s (x,_) -> s ^ " " ^ x) "" ctx)
           ^ " }]")
+  | TyRecord(fields) ->
+      let rec pf (li,tyTi) = printty_Type ctx tyTi
+      in let rec p l = match l with
+          [] -> ()
+        | [f] -> pf f
+        | f::rest -> pf f; pr ","; p rest
+      in pr "{"; p fields; pr "}"
   | TyId(b) -> pr b
   | TyBool -> pr "Bool"
   | TyString -> pr "String"
@@ -132,6 +144,14 @@ let rec printtm ctx t = match t with
   | TmIsZero(fi, t1) -> pr "iszero "; printtm ctx t1
   | TmUnit(fi) -> pr "unit"
   | TmAscribe(fi, t1, tyT1) -> printtm ctx t1; pr " as "; printty ctx tyT1
+  | TmRecord(fi, fields) ->
+      let rec pf (li,ti) = printtm ctx ti
+      in let rec p l = match l with
+          [] -> ()
+        | [f] -> pf f
+        | f::rest -> pf f; pr ","; p rest
+      in pr "{"; p fields; pr "}"
+  | TmProj(fi, t1, l) -> printtm ctx t1; pr "."; pr l
 
 let prbinding ctx b = match b with
     NameBind -> () 
@@ -149,6 +169,7 @@ let typeShiftAbove d c tyT =
   | TyBool -> TyBool
   | TyNat -> TyNat
   | TyArr(tyT1,tyT2) -> TyArr(walk c tyT1,walk c tyT2)
+  | TyRecord(fieldtys) -> TyRecord(List.map (fun (li, tyTi) -> (li, walk c tyTi)) fieldtys)
   in walk c tyT
 
 let typeShift d tyT = typeShiftAbove d 0 tyT
@@ -172,6 +193,8 @@ let termShift d t =
   | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
   | TmUnit(fi) as t -> t
   | TmAscribe(fi, t1, tyT1) -> TmAscribe(fi, walk c t1, typeShiftAbove d c tyT1)
+  | TmRecord(fi, fields) -> TmRecord(fi, List.map (fun (li, ti) -> (li, walk c ti)) fields)
+  | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
   in walk 0 t
 
 let termSubst j s t =
@@ -192,6 +215,8 @@ let termSubst j s t =
   | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
   | TmUnit(fi) as t -> t
   | TmAscribe(fi, t1, tyT1) -> TmAscribe(fi, walk c t1, tyT1)
+  | TmRecord(fi, fields) -> TmRecord(fi, List.map (fun (li, ti) -> (li, walk c ti)) fields)
+  | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
   in walk 0 t
 
 let termSubstTop s t =
@@ -206,6 +231,7 @@ let rec isval ctx t = match t with
     TmTrue(_) -> true
   | TmFalse(_) -> true
   | TmAbs(_, _, _, _) -> true
+  | TmRecord(_, fields) -> List.for_all (fun (l, ti) -> isval ctx ti) fields
   | TmString _ -> true
   | TmUnit(_) -> true
   | TmFloat _ -> true
@@ -257,6 +283,23 @@ let rec eval1 ctx t = match t with
   | TmAscribe(fi, t1, tyT) ->
       let t1' = eval1 ctx t1 in
       TmAscribe(fi, t1', tyT)
+  | TmRecord(fi, fields) ->
+      let rec evalfield l = match l with
+        [] -> raise NoRuleApplies
+      | (l, vi)::rest when isval ctx vi ->
+          let rest' = evalfield rest in
+          (l, vi)::rest'
+      | (l, ti)::rest ->
+          let ti' = eval1 ctx ti in
+          (l, ti')::rest
+      in let fields' = evalfield fields in
+      TmRecord(fi, fields')
+  | TmProj(fi, (TmRecord(_, fields) as v1), l) when isval ctx v1 ->
+      (try List.assoc l fields
+       with Not_found -> raise NoRuleApplies)
+  | TmProj(fi, t1, l) ->
+      let t1' = eval1 ctx t1 in
+      TmProj(fi, t1', l)
   | _ ->
       raise NoRuleApplies
 
@@ -346,3 +389,12 @@ let rec typeof ctx t = match t with
   | TmAscribe(fi, t1, tyT) ->
       if (=) (simplifyty ctx (typeof ctx t1)) (simplifyty ctx tyT) then tyT
       else error fi "body of as-term does not have the expected type"
+  | TmRecord(fi, fields) ->
+      let fieldtys = List.map (fun (li, ti) -> (li, typeof ctx ti)) fields in
+      TyRecord(fieldtys)
+  | TmProj(fi, t1, l) ->
+      (match simplifyty ctx (typeof ctx t1) with
+          TyRecord(fieldtys) -> 
+            (try List.assoc l fieldtys
+             with Not_found -> error fi ("label "^l^" not found"))
+        | _ -> error fi "Expected record type")

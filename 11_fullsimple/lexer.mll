@@ -33,12 +33,15 @@ rule main = parse
   | "iszero"                         { Parser.ISZERO(info lexbuf) }
   | "unit"                           { Parser.UNIT(info lexbuf) }
   | "."                              { Parser.DOT(info lexbuf) }
+  | "{"                              { Parser.LCURLY(info lexbuf) }
+  | "}"                              { Parser.RCURLY(info lexbuf) }
   | "("                              { Parser.LPAREN(info lexbuf) }
   | ")"                              { Parser.RPAREN(info lexbuf) }
   | ";"                              { Parser.SEMI(info lexbuf) }
   | "/"                              { Parser.SLASH(info lexbuf) }
   | "_"                              { Parser.USCORE(info lexbuf) }
   | ":"                              { Parser.COLON(info lexbuf) }
+  | ","                              { Parser.COMMA(info lexbuf) }
   | "->"                             { Parser.ARROW(info lexbuf) }
   | "="                              { Parser.EQ(info lexbuf) }
   | ['0'-'9']+                       { Parser.INTV{i=(info lexbuf);v=(int_of_string (text lexbuf))} }

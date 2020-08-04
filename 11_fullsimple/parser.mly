@@ -29,9 +29,12 @@ open Support
 %token <string Support.withinfo> STRINGV
 %token <Support.info> ARROW
 %token <Support.info> COLON
+%token <Support.info> COMMA
 %token <Support.info> DOT
 %token <Support.info> EQ
 %token <Support.info> EOF
+%token <Support.info> LCURLY
+%token <Support.info> RCURLY
 %token <Support.info> LPAREN
 %token <Support.info> RPAREN
 %token <Support.info> SEMI
@@ -56,20 +59,29 @@ Binder: COLON Type { fun ctx -> VarBind ($2 ctx) }
 
 Type: ArrowType { $1 }
 
-AType: LPAREN Type RPAREN { $2 }
-     | UCID               { fun ctx -> if isnamebound ctx $1.v then TyVar(name2index $1.i ctx $1.v, ctxlength ctx)
-                                       else TyId($1.v) }
-     | BOOL               { fun ctx -> TyBool }
-     | USTRING            { fun ctx -> TyString }
-     | UFLOAT             { fun ctx -> TyFloat }
-     | UUNIT              { fun ctx -> TyUnit }
-     | NAT                { fun ctx -> TyNat }
+AType: LPAREN Type RPAREN       { $2 }
+     | UCID                     { fun ctx -> if isnamebound ctx $1.v then TyVar(name2index $1.i ctx $1.v, ctxlength ctx)
+                                             else TyId($1.v) }
+     | BOOL                     { fun ctx -> TyBool }
+     | USTRING                  { fun ctx -> TyString }
+     | UFLOAT                   { fun ctx -> TyFloat }
+     | UUNIT                    { fun ctx -> TyUnit }
+     | LCURLY FieldTypes RCURLY { fun ctx -> TyRecord($2 ctx 1) }
+     | NAT                      { fun ctx -> TyNat }
 
 ArrowType: AType ARROW ArrowType { fun ctx -> TyArr($1 ctx, $3 ctx) }
          | AType                 { $1 }
 
 TyBinder:         { fun ctx -> TyVarBind }
         | EQ Type { fun ctx -> TyAbbBind($2 ctx) }
+
+FieldTypes:              { fun ctx i -> [] }
+          | NEFieldTypes { $1 }
+
+NEFieldTypes: FieldType                    { fun ctx i -> [$1 ctx i] }
+            | FieldType COMMA NEFieldTypes { fun ctx i -> ($1 ctx i) :: ($3 ctx (i+1)) }
+
+FieldType: Type { fun ctx i -> (string_of_int i, $1 ctx) }
 
 Term: AppTerm                           { $1 }
     | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
@@ -78,17 +90,20 @@ Term: AppTerm                           { $1 }
     | LET LCID EQ Term IN Term          { fun ctx -> TmLet($1, $2.v, $4 ctx, $6 (addname ctx $2.v)) }
     | LET USCORE EQ Term IN Term        { fun ctx -> TmLet($1, "_", $4 ctx, $6 (addname ctx "_")) }
 
-AppTerm: AscribeTerm                        { $1 }
-       | AppTerm AscribeTerm                { fun ctx -> let e1 = $1 ctx in
-                                                         let e2 = $2 ctx in
-                                                         TmApp(tmInfo e1,e1,e2) }
-       | TIMESFLOAT AscribeTerm AscribeTerm { fun ctx -> TmTimesfloat($1,$2 ctx,$3 ctx) }
-       | SUCC AscribeTerm                   { fun ctx -> TmSucc($1,$2 ctx) }
-       | PRED AscribeTerm                   { fun ctx -> TmPred($1,$2 ctx) }
-       | ISZERO AscribeTerm                 { fun ctx -> TmIsZero($1,$2 ctx) }
+AppTerm: PathTerm                     { $1 }
+       | AppTerm PathTerm             { fun ctx -> let e1 = $1 ctx in
+                                                   let e2 = $2 ctx in
+                                                   TmApp(tmInfo e1,e1,e2) }
+       | TIMESFLOAT PathTerm PathTerm { fun ctx -> TmTimesfloat($1,$2 ctx,$3 ctx) }
+       | SUCC PathTerm                { fun ctx -> TmSucc($1,$2 ctx) }
+       | PRED PathTerm                { fun ctx -> TmPred($1,$2 ctx) }
+       | ISZERO PathTerm              { fun ctx -> TmIsZero($1,$2 ctx) }
 
 AscribeTerm: ATerm AS Type { fun ctx -> TmAscribe($2, $1 ctx, $3 ctx) }
            | ATerm         { $1 }
+
+PathTerm: PathTerm DOT INTV { fun ctx -> TmProj($2, $1 ctx, string_of_int $3.v) }
+        | AscribeTerm       { $1 }
 
 TermSeq: Term              { $1 }
        | Term SEMI TermSeq { fun ctx -> TmApp($2, TmAbs($2, "_", TyUnit, $3 (addname ctx "_")), $1 ctx) }
@@ -99,8 +114,17 @@ ATerm: LPAREN TermSeq RPAREN { $2 }
      | FALSE                 { fun ctx -> TmFalse($1) }
      | STRINGV               { fun ctx -> TmString($1.i,$1.v) }
      | UNIT                  { fun ctx -> TmUnit($1) }
+     | LCURLY Fields RCURLY  { fun ctx -> TmRecord($1, $2 ctx 1) }
      | FLOATV                { fun ctx -> TmFloat($1.i,$1.v) }
      | INTV                  { fun ctx -> let rec f n = match n with
                                               0 -> TmZero($1.i)
                                             | n -> TmSucc($1.i,f (n-1))
                                           in f $1.v }
+
+Fields:          { fun ctx i -> [] }
+      | NEFields { $1 }
+
+NEFields: Field                { fun ctx i -> [$1 ctx i] }
+        | Field COMMA NEFields { fun ctx i -> ($1 ctx i) :: ($3 ctx (i+1)) }
+
+Field: Term { fun ctx i -> (string_of_int i, $1 ctx) }

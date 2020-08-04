@@ -50,6 +50,14 @@ T = Nat -> Nat
 true: Bool
 
 # 11.7 Tuples
+% ./f "{true, false};"
+{true,false}: {Bool,Bool}
+% ./f "{true, (lambda x:Nat. x)1};"
+{true,1}: {Bool,Nat}
+% ./f "{true, (lambda x:Nat. x)1}.1;"
+true: Bool
+% ./f "(lambda x:{Bool,Bool}. x.1){true, false};"
+true: Bool
 
 # 11.8 Records
 
