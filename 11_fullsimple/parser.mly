@@ -81,7 +81,8 @@ FieldTypes:              { fun ctx i -> [] }
 NEFieldTypes: FieldType                    { fun ctx i -> [$1 ctx i] }
             | FieldType COMMA NEFieldTypes { fun ctx i -> ($1 ctx i) :: ($3 ctx (i+1)) }
 
-FieldType: Type { fun ctx i -> (string_of_int i, $1 ctx) }
+FieldType: Type            { fun ctx i -> (string_of_int i, $1 ctx) }
+         | LCID COLON Type { fun ctx i -> ($1.v, $3 ctx) }
 
 Term: AppTerm                           { $1 }
     | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
@@ -103,6 +104,7 @@ AscribeTerm: ATerm AS Type { fun ctx -> TmAscribe($2, $1 ctx, $3 ctx) }
            | ATerm         { $1 }
 
 PathTerm: PathTerm DOT INTV { fun ctx -> TmProj($2, $1 ctx, string_of_int $3.v) }
+        | PathTerm DOT LCID { fun ctx -> TmProj($2, $1 ctx, $3.v) }
         | AscribeTerm       { $1 }
 
 TermSeq: Term              { $1 }
@@ -127,4 +129,5 @@ Fields:          { fun ctx i -> [] }
 NEFields: Field                { fun ctx i -> [$1 ctx i] }
         | Field COMMA NEFields { fun ctx i -> ($1 ctx i) :: ($3 ctx (i+1)) }
 
-Field: Term { fun ctx i -> (string_of_int i, $1 ctx) }
+Field: Term         { fun ctx i -> (string_of_int i, $1 ctx) }
+     | LCID EQ Term { fun ctx i -> ($1.v, $3 ctx) }

@@ -97,12 +97,14 @@ and printty_AType ctx tyT = match tyT with
           ^ (List.fold_left (fun s (x,_) -> s ^ " " ^ x) "" ctx)
           ^ " }]")
   | TyRecord(fields) ->
-      let rec pf (li,tyTi) = printty_Type ctx tyTi
-      in let rec p l = match l with
+      let pf i (li,tyTi)  =
+        if (li <> (string_of_int i)) then (pr li; pr ":");
+        printty_Type ctx tyTi
+      in let rec p i l = match l with
           [] -> ()
-        | [f] -> pf f
-        | f::rest -> pf f; pr ","; p rest
-      in pr "{"; p fields; pr "}"
+        | [f] -> pf i f
+        | f::rest -> pf i f; pr ","; p (i+1) rest
+      in pr "{"; p 1 fields; pr "}"
   | TyId(b) -> pr b
   | TyBool -> pr "Bool"
   | TyString -> pr "String"
@@ -145,12 +147,14 @@ let rec printtm ctx t = match t with
   | TmUnit(fi) -> pr "unit"
   | TmAscribe(fi, t1, tyT1) -> printtm ctx t1; pr " as "; printty ctx tyT1
   | TmRecord(fi, fields) ->
-      let rec pf (li,ti) = printtm ctx ti
-      in let rec p l = match l with
+      let pf i (li,ti) =
+        if (li <> (string_of_int i)) then (pr li; pr "=");
+        printtm ctx ti
+      in let rec p i l = match l with
           [] -> ()
-        | [f] -> pf f
-        | f::rest -> pf f; pr ","; p rest
-      in pr "{"; p fields; pr "}"
+        | [f] -> pf i f
+        | f::rest -> pf i f; pr ","; p (i+1) rest
+      in pr "{"; p 1 fields; pr "}"
   | TmProj(fi, t1, l) -> printtm ctx t1; pr "."; pr l
 
 let prbinding ctx b = match b with

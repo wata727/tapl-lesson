@@ -60,6 +60,16 @@ true: Bool
 true: Bool
 
 # 11.8 Records
+% ./f "{x=true, y=false};"
+{x=true,y=false}: {x:Bool,y:Bool}
+% ./f "{x=true, y=false}.x;"
+true: Bool
+% ./f "(lambda x:{a:Nat, b:Nat}. x.b);"
+(lambda x:{a:Nat,b:Nat}. x.b): {a:Nat,b:Nat} -> Nat
+% ./f "(lambda x:{a:Nat, b:Nat}. x.b){a=1,b=2};"
+2: Nat
+% ./f "(lambda x:{a:Nat, b:Nat}. x.b){b=2,a=1};"
+:1.1: parameter type mismatch
 
 # 11.10 Variants
 
