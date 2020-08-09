@@ -23,6 +23,8 @@ rule main = parse
   | "true"                           { Parser.TRUE(info lexbuf) }
   | "false"                          { Parser.FALSE(info lexbuf) }
   | "Bool"                           { Parser.BOOL(info lexbuf) }
+  | "case"                           { Parser.CASE(info lexbuf) }
+  | "of"                             { Parser.OF(info lexbuf) }
   | "String"                         { Parser.USTRING(info lexbuf) }
   | "Float"                          { Parser.UFLOAT(info lexbuf) }
   | "Unit"                           { Parser.UUNIT(info lexbuf) }
@@ -37,13 +39,17 @@ rule main = parse
   | "}"                              { Parser.RCURLY(info lexbuf) }
   | "("                              { Parser.LPAREN(info lexbuf) }
   | ")"                              { Parser.RPAREN(info lexbuf) }
+  | "<"                              { Parser.LT(info lexbuf) }
+  | ">"                              { Parser.GT(info lexbuf) }
   | ";"                              { Parser.SEMI(info lexbuf) }
   | "/"                              { Parser.SLASH(info lexbuf) }
   | "_"                              { Parser.USCORE(info lexbuf) }
   | ":"                              { Parser.COLON(info lexbuf) }
   | ","                              { Parser.COMMA(info lexbuf) }
   | "->"                             { Parser.ARROW(info lexbuf) }
+  | "==>"                            { Parser.DDARROW(info lexbuf) }
   | "="                              { Parser.EQ(info lexbuf) }
+  | "|"                              { Parser.VBAR(info lexbuf) }
   | ['0'-'9']+                       { Parser.INTV{i=(info lexbuf);v=(int_of_string (text lexbuf))} }
   | ['0'-'9']+ '.' ['0'-'9']+        { Parser.FLOATV{i=(info lexbuf);v=(float_of_string (text lexbuf))} }
   | '"' ['A'-'Z' 'a'-'z' '_']+ '"'   { Parser.STRINGV{i=(info lexbuf);v=(List.nth (String.split_on_char '"' (text lexbuf)) 1)} }

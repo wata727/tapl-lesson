@@ -6,6 +6,7 @@ type ty =
   | TyId of string
   | TyArr of ty * ty
   | TyRecord of (string * ty) list
+  | TyVariant of (string *  ty) list
   | TyBool
   | TyString
   | TyFloat
@@ -31,6 +32,8 @@ type term =
   | TmAscribe of info * term * ty
   | TmRecord of info * (string * term) list
   | TmProj of info * term * string
+  | TmCase of info * term * (string * (string * term)) list
+  | TmTag of info * string * term * ty
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -51,6 +54,8 @@ let tmInfo t = match t with
   | TmAscribe(fi, _, _) -> fi
   | TmRecord(fi, _) -> fi
   | TmProj(fi, _, _) -> fi
+  | TmCase(fi, _, _) -> fi
+  | TmTag(fi, _, _, _) -> fi
 
 type binding =
     NameBind
@@ -105,6 +110,15 @@ and printty_AType ctx tyT = match tyT with
         | [f] -> pf i f
         | f::rest -> pf i f; pr ","; p (i+1) rest
       in pr "{"; p 1 fields; pr "}"
+  | TyVariant(fields) ->
+      let pf i (li,tyTi) =
+        if (li <> (string_of_int i)) then (pr li; pr ":");
+        printty_Type ctx tyTi
+      in let rec p i l = match l with
+          [] -> ()
+        | [f] -> pf i f
+        | f::rest -> pf i f; pr ","; p (i+1) rest
+      in pr "<"; p 1 fields; pr ">"
   | TyId(b) -> pr b
   | TyBool -> pr "Bool"
   | TyString -> pr "String"
@@ -156,6 +170,17 @@ let rec printtm ctx t = match t with
         | f::rest -> pf i f; pr ","; p (i+1) rest
       in pr "{"; p 1 fields; pr "}"
   | TmProj(fi, t1, l) -> printtm ctx t1; pr "."; pr l
+  | TmCase(_, t, cases) ->
+      pr "case "; printtm ctx t; pr " of ";
+      let pc (li,(xi,ti)) =
+        let (ctx',xi') = (pickfreshname ctx xi) 
+        in pr "<"; pr li; pr "="; pr xi'; pr "> ==> "; printtm ctx' ti;
+      in let rec p l = match l with
+          [] -> ()
+        | [c] -> pc c
+        | c::rest -> pc c; pr " | "; p rest
+      in p cases
+  | TmTag(fi, l, t, tyT) -> pr "<"; pr l; pr "="; printtm ctx t; pr ">"; pr " as "; printty ctx tyT
 
 let prbinding ctx b = match b with
     NameBind -> () 
@@ -174,6 +199,7 @@ let typeShiftAbove d c tyT =
   | TyNat -> TyNat
   | TyArr(tyT1,tyT2) -> TyArr(walk c tyT1,walk c tyT2)
   | TyRecord(fieldtys) -> TyRecord(List.map (fun (li, tyTi) -> (li, walk c tyTi)) fieldtys)
+  | TyVariant(fieldtys) -> TyVariant(List.map (fun (li, tyTi) -> (li, walk c tyTi)) fieldtys)
   in walk c tyT
 
 let typeShift d tyT = typeShiftAbove d 0 tyT
@@ -199,6 +225,8 @@ let termShift d t =
   | TmAscribe(fi, t1, tyT1) -> TmAscribe(fi, walk c t1, typeShiftAbove d c tyT1)
   | TmRecord(fi, fields) -> TmRecord(fi, List.map (fun (li, ti) -> (li, walk c ti)) fields)
   | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
+  | TmCase(fi, t, cases) -> TmCase(fi, walk c t, List.map (fun (li,(xi,ti)) -> (li,(xi,walk (c+1) ti))) cases)
+  | TmTag(fi, l, t1, tyT) -> TmTag(fi, l, walk c t1, typeShiftAbove d c tyT)
   in walk 0 t
 
 let termSubst j s t =
@@ -221,6 +249,8 @@ let termSubst j s t =
   | TmAscribe(fi, t1, tyT1) -> TmAscribe(fi, walk c t1, tyT1)
   | TmRecord(fi, fields) -> TmRecord(fi, List.map (fun (li, ti) -> (li, walk c ti)) fields)
   | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
+  | TmCase(fi, t, cases) -> TmCase(fi, walk c t, List.map (fun (li,(xi,ti)) -> (li,(xi,walk (c+1) ti))) cases)
+  | TmTag(fi, l, t1, tyT) -> TmTag(fi, l, walk c t1, tyT)
   in walk 0 t
 
 let termSubstTop s t =
@@ -236,6 +266,7 @@ let rec isval ctx t = match t with
   | TmFalse(_) -> true
   | TmAbs(_, _, _, _) -> true
   | TmRecord(_, fields) -> List.for_all (fun (l, ti) -> isval ctx ti) fields
+  | TmTag(_, l, t1, _) -> isval ctx t1
   | TmString _ -> true
   | TmUnit(_) -> true
   | TmFloat _ -> true
@@ -304,6 +335,17 @@ let rec eval1 ctx t = match t with
   | TmProj(fi, t1, l) ->
       let t1' = eval1 ctx t1 in
       TmProj(fi, t1', l)
+  | TmCase(fi, TmTag(_,li,v11,_), branches) when isval ctx v11 ->
+      (try
+        let (x, body) = List.assoc li branches in
+        termSubstTop v11 body
+       with Not_found -> raise NoRuleApplies)
+  | TmCase(fi, t1, branches) ->
+      let t1' = eval1 ctx t1 in
+      TmCase(fi, t1', branches)
+  | TmTag(fi, l, t1, tyT) ->
+      let t1' = eval1 ctx t1 in
+      TmTag(fi, l, t1', tyT)
   | _ ->
       raise NoRuleApplies
 
@@ -352,7 +394,7 @@ let rec typeof ctx t = match t with
   | TmAbs(fi, x, tyT1, t2) ->
       let ctx' = addbinding ctx x (VarBind(tyT1)) in
       let tyT2 = typeof ctx' t2 in
-      TyArr(tyT1, tyT2)
+      TyArr(tyT1, typeShift (-1) tyT2)
   | TmApp(fi, t1, t2) ->
       let tyT1 = typeof ctx t1 in
       let tyT2 = typeof ctx t2 in
@@ -402,3 +444,40 @@ let rec typeof ctx t = match t with
             (try List.assoc l fieldtys
              with Not_found -> error fi ("label "^l^" not found"))
         | _ -> error fi "Expected record type")
+  | TmCase(fi, t1, cases) ->
+      (match simplifyty ctx (typeof ctx t1) with
+          TyVariant(fieldtys) ->
+            List.iter
+              (fun (li,(xi,ti)) -> 
+                 try let _ = List.assoc li fieldtys in ()
+                 with Not_found -> error fi ("label "^li^" not in type"))
+              cases;
+            let casetypes =
+              List.map (fun (li,(xi,ti)) ->
+                          let tyTi =
+                            try List.assoc li fieldtys
+                            with Not_found ->
+                              error fi ("label "^li^" not found") in
+                          let ctx' = addbinding ctx xi (VarBind(tyTi)) in
+                          typeShift (-1) (typeof ctx' ti))
+                       cases in
+            let tyT1 = List.hd casetypes in
+            let restTy = List.tl casetypes in
+            List.iter
+              (fun tyTi ->
+                 if not ((=) tyTi tyT1)
+                 then error fi "fields do not have the same type")
+              restTy;
+            tyT1
+        | _ -> error fi "Expected variant type")
+  | TmTag(fi, li, ti, tyT) ->
+      (match simplifyty ctx tyT with
+           TyVariant(fieldtys) ->
+             (try
+                let tyTiExpected = List.assoc li fieldtys in
+                let tyTi = typeof ctx ti in
+                if (=) tyTi tyTiExpected
+                  then tyT
+                  else error fi "field does not have expected type"
+              with Not_found -> error fi ("label "^li^" not found"))
+         | _ -> error fi "Annotation is not a variant type")

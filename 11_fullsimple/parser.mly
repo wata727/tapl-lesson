@@ -13,6 +13,8 @@ open Support
 %token <Support.info> TRUE
 %token <Support.info> FALSE
 %token <Support.info> BOOL
+%token <Support.info> CASE
+%token <Support.info> OF
 %token <Support.info> USTRING
 %token <Support.info> UFLOAT
 %token <Support.info> TIMESFLOAT
@@ -28,6 +30,7 @@ open Support
 %token <float Support.withinfo> FLOATV
 %token <string Support.withinfo> STRINGV
 %token <Support.info> ARROW
+%token <Support.info> DDARROW
 %token <Support.info> COLON
 %token <Support.info> COMMA
 %token <Support.info> DOT
@@ -37,9 +40,12 @@ open Support
 %token <Support.info> RCURLY
 %token <Support.info> LPAREN
 %token <Support.info> RPAREN
+%token <Support.info> LT
+%token <Support.info> GT
 %token <Support.info> SEMI
 %token <Support.info> SLASH
 %token <Support.info> USCORE
+%token <Support.info> VBAR
 
 %start toplevel
 %type < Core.context -> (Core.command list * Core.context) > toplevel
@@ -67,6 +73,7 @@ AType: LPAREN Type RPAREN       { $2 }
      | UFLOAT                   { fun ctx -> TyFloat }
      | UUNIT                    { fun ctx -> TyUnit }
      | LCURLY FieldTypes RCURLY { fun ctx -> TyRecord($2 ctx 1) }
+     | LT FieldTypes GT         { fun ctx -> TyVariant($2 ctx 1) }
      | NAT                      { fun ctx -> TyNat }
 
 ArrowType: AType ARROW ArrowType { fun ctx -> TyArr($1 ctx, $3 ctx) }
@@ -90,6 +97,7 @@ Term: AppTerm                           { $1 }
     | IF Term THEN Term ELSE Term       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
     | LET LCID EQ Term IN Term          { fun ctx -> TmLet($1, $2.v, $4 ctx, $6 (addname ctx $2.v)) }
     | LET USCORE EQ Term IN Term        { fun ctx -> TmLet($1, "_", $4 ctx, $6 (addname ctx "_")) }
+    | CASE Term OF Cases                { fun ctx -> TmCase($1, $2 ctx, $4 ctx) }
 
 AppTerm: PathTerm                     { $1 }
        | AppTerm PathTerm             { fun ctx -> let e1 = $1 ctx in
@@ -110,18 +118,25 @@ PathTerm: PathTerm DOT INTV { fun ctx -> TmProj($2, $1 ctx, string_of_int $3.v) 
 TermSeq: Term              { $1 }
        | Term SEMI TermSeq { fun ctx -> TmApp($2, TmAbs($2, "_", TyUnit, $3 (addname ctx "_")), $1 ctx) }
 
-ATerm: LPAREN TermSeq RPAREN { $2 }
-     | LCID                  { fun ctx -> TmVar($1.i, name2index $1.i ctx $1.v, ctxlength ctx) }
-     | TRUE                  { fun ctx -> TmTrue($1) }
-     | FALSE                 { fun ctx -> TmFalse($1) }
-     | STRINGV               { fun ctx -> TmString($1.i,$1.v) }
-     | UNIT                  { fun ctx -> TmUnit($1) }
-     | LCURLY Fields RCURLY  { fun ctx -> TmRecord($1, $2 ctx 1) }
-     | FLOATV                { fun ctx -> TmFloat($1.i,$1.v) }
-     | INTV                  { fun ctx -> let rec f n = match n with
-                                              0 -> TmZero($1.i)
-                                            | n -> TmSucc($1.i,f (n-1))
-                                          in f $1.v }
+ATerm: LPAREN TermSeq RPAREN      { $2 }
+     | LCID                       { fun ctx -> TmVar($1.i, name2index $1.i ctx $1.v, ctxlength ctx) }
+     | TRUE                       { fun ctx -> TmTrue($1) }
+     | FALSE                      { fun ctx -> TmFalse($1) }
+     | STRINGV                    { fun ctx -> TmString($1.i,$1.v) }
+     | UNIT                       { fun ctx -> TmUnit($1) }
+     | LCURLY Fields RCURLY       { fun ctx -> TmRecord($1, $2 ctx 1) }
+     | FLOATV                     { fun ctx -> TmFloat($1.i,$1.v) }
+     | INTV                       { fun ctx -> let rec f n = match n with
+                                                   0 -> TmZero($1.i)
+                                                 | n -> TmSucc($1.i,f (n-1))
+                                               in f $1.v }
+     | LT LCID EQ Term GT AS Type { fun ctx -> TmTag($1, $2.v, $4 ctx, $7 ctx) }
+
+Cases: Case            { fun ctx -> [$1 ctx] }
+     | Case VBAR Cases { fun ctx -> ($1 ctx) :: ($3 ctx) }
+
+Case: LT LCID EQ LCID GT DDARROW AppTerm { fun ctx -> let ctx1 = addname ctx $4.v
+                                                      in ($2.v, ($4.v, $7 ctx1)) }
 
 Fields:          { fun ctx i -> [] }
       | NEFields { $1 }
