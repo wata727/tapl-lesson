@@ -62,6 +62,7 @@ type binding =
   | TyVarBind
   | VarBind of ty
   | TyAbbBind of ty
+  | TmAbbBind of term * (ty option)
 type context = (string * binding) list
 
 let emptycontext = []
@@ -187,6 +188,7 @@ let prbinding ctx b = match b with
   | TyVarBind -> ()
   | VarBind(tyT) -> pr ": "; printty ctx tyT
   | TyAbbBind(tyT) -> pr "= "; printty ctx tyT
+  | TmAbbBind(t, tyT) -> pr "= "; printtm ctx t
 
 let typeShiftAbove d c tyT =
   let rec walk c tyT = match tyT with
@@ -256,6 +258,25 @@ let termSubst j s t =
 let termSubstTop s t =
   termShift (-1) (termSubst 0 (termShift 1 s) t)
 
+let bindingshift d bind = match bind with
+    NameBind -> NameBind
+  | TyVarBind -> TyVarBind
+  | VarBind(tyT) -> VarBind(typeShift d tyT)
+  | TyAbbBind(tyT) -> TyAbbBind(typeShift d tyT)
+  | TmAbbBind(t, tyT_opt) ->
+      let tyT_opt' = match tyT_opt with
+                       None -> None
+                     | Some(tyT) -> Some(typeShift d tyT) in
+      TmAbbBind(termShift d t, tyT_opt')
+
+let getbinding fi ctx i =
+  try
+    let (_, bind) = List.nth ctx i in
+    bindingshift (i+1) bind
+  with Failure _ ->
+    let msg = Printf.sprintf "Variable lookup failure: offset: %d, ctx size: %d" in
+    error fi (msg i (List.length ctx))
+
 let rec isnumericval ctx t = match t with
     TmZero(_) -> true
   | TmSucc(_, t1) -> isnumericval ctx t1
@@ -289,6 +310,10 @@ let rec eval1 ctx t = match t with
   | TmLet(fi, x, t1, t2) ->
       let t1' = eval1 ctx t1 in
       TmLet(fi, x, t1', t2)
+  | TmVar(fi, n, _) ->
+      (match getbinding fi ctx n with
+           TmAbbBind(t, _) -> t
+         | _ -> raise NoRuleApplies)
   | TmIf(_, TmTrue(_), t2, t3) -> t2
   | TmIf(_, TmFalse(_), t2, t3) -> t3
   | TmIf(fi, t1, t2, t3) ->
@@ -354,21 +379,16 @@ let rec eval ctx t =
       in eval ctx t'
   with NoRuleApplies -> t
 
-let bindingshift d bind = match bind with
-    NameBind -> NameBind
-  | TyVarBind -> TyVarBind
-  | VarBind(tyT) -> VarBind(typeShift d tyT)
-  | TyAbbBind(tyT) -> TyAbbBind(typeShift d tyT)
+let evalbinding ctx b = match b with
+    TmAbbBind(t, tyT) ->
+      let t' = eval ctx t in
+      TmAbbBind(t', tyT)
+  | bind -> bind
 
-let getbinding fi ctx i =
-  try
-    let (_, bind) = List.nth ctx i in
-    bindingshift (i+1) bind
-  with Failure _ ->
-    let msg = Printf.sprintf "Variable lookup failure: offset: %d, ctx size: %d" in
-    error fi (msg i (List.length ctx))
 let getTypeFromContext fi ctx i = match getbinding fi ctx i with
     VarBind(tyT) -> tyT
+  | TmAbbBind(_, Some(tyT)) -> tyT
+  | TmAbbBind(_, None) -> error fi ("No type recorded for variable " ^ (index2name fi ctx i))
   | _ -> error fi ("getTypeFromContext: Wrong kind of binding for variable " ^ (index2name fi ctx i))
 
 let istyabb ctx i = match getbinding dummyinfo ctx i with

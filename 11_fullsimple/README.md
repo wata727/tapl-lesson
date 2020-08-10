@@ -25,7 +25,7 @@ true: Bool
 % ./f "lambda x:A. x;"
 (lambda x:A. x): A -> A
 % ./f "T = Nat -> Nat; lambda f:T. lambda x:Nat. f (f x);"
-T = Nat -> Nat
+T :: *
 (lambda f:T. (lambda x:Nat. (f (f x)))): T -> Nat -> Nat
 
 # 11.2 The Unit Type
@@ -39,10 +39,10 @@ unit: Unit
 # 11.4 Ascription
 % ./f "1 as Nat;"
 1: Nat
-% ./f "1 as String";
+% ./f "1 as String;"
 :1.2: body of as-term does not have the expected type
 % ./f "T = Nat -> Nat; (lambda x:Nat. x) as T;"
-T = Nat -> Nat
+T :: *
 (lambda x:Nat. x): T
 
 # 11.5 Let Bindings
@@ -75,40 +75,51 @@ true: Bool
 % ./f "lambda x:<a:Bool,b:Bool>. x;"
 (lambda x:<a:Bool,b:Bool>. x): <a:Bool,b:Bool> -> <a:Bool,b:Bool>
 % ./f "Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>; (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.name);"
-Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>
+Addr :: *
 (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.name): Addr -> String
 % ./f "Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>; (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.addr);"
-Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>
+Addr :: *
 :1.159: label addr not found
-% ./f "Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>; let addr = <physical={firstlast=\"foo\",addr=\"bar\"}> as Addr in (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.name)addr;"
-Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>
+% ./f "Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>; addr = <physical={firstlast=\"foo\",addr=\"bar\"}> as Addr; getName = (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.name); getName addr;"
+Addr :: *
+addr : Addr
+getName : Addr -> String
 "foo": String
-% ./f "Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>; let addr = <virtual={name=\"foo\",email=\"bar\"}> as Addr in (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.name)addr;"
-Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>
+% ./f "Addr = <physical:{firstlast:String,addr:String},virtual:{name:String,email:String}>; addr = <virtual={name=\"foo\",email=\"bar\"}> as Addr; getName = (lambda a:Addr. case a of <physical=x> ==> x.firstlast | <virtual=y> ==> y.name); getName addr;"
+Addr :: *
+addr : Addr
+getName : Addr -> String
 "foo": String
 % ./f "OptionalNat = <none:Unit, some:Nat>; Table = Nat -> OptionalNat; (lambda n:OptionalNat. case n of <none=x> ==> 999 | <some=y> ==> y);"
-OptionalNat = <none:Unit,some:Nat>
-Table = Nat -> OptionalNat
+OptionalNat :: *
+Table :: *
 (lambda n:OptionalNat. case n of <none=x> ==> 999 | <some=y> ==> y): OptionalNat -> Nat
 % ./f "OptionalNat = <none:Unit, some:Nat>; Table = Nat -> OptionalNat; (lambda n:OptionalNat. case n of <none=x> ==> 999 | <some=y> ==> y)<some=10> as OptionalNat;"
-OptionalNat = <none:Unit,some:Nat>
-Table = Nat -> OptionalNat
+OptionalNat :: *
+Table :: *
 10: Nat
 % ./f "OptionalNat = <none:Unit, some:Nat>; Table = Nat -> OptionalNat; (lambda n:OptionalNat. case n of <none=x> ==> 999 | <some=y> ==> y)<none=unit> as OptionalNat;"
-OptionalNat = <none:Unit,some:Nat>
-Table = Nat -> OptionalNat
+OptionalNat :: *
+Table :: *
 999: Nat
-% ./f "Weekday = <monday:Unit,tuesday:Unit,wednessday:Unit,thursday:Unit,friday:Unit>; (lambda w:Weekday. case w of <monday=x> ==> <tuesday=unit> as Weekday | <tuesday=x> ==> <wednessday=unit> as Weekday | <wednessday=x> ==> <thursday=unit> as Weekday | <thursday=x> ==> <friday=unit> as Weekday | <friday=x> ==> <monday=unit> as Weekday)<monday=unit> as Weekday;"
-Weekday = <monday:Unit,tuesday:Unit,wednessday:Unit,thursday:Unit,friday:Unit>
+% ./f "Weekday = <monday:Unit,tuesday:Unit,wednessday:Unit,thursday:Unit,friday:Unit>; nextBusinessDay = (lambda w:Weekday. case w of <monday=x> ==> <tuesday=unit> as Weekday | <tuesday=x> ==> <wednessday=unit> as Weekday | <wednessday=x> ==> <thursday=unit> as Weekday | <thursday=x> ==> <friday=unit> as Weekday | <friday=x> ==> <monday=unit> as Weekday); nextBusinessDay <monday=unit> as Weekday;"
+Weekday :: *
+nextBusinessDay : Weekday -> Weekday
 <tuesday=unit> as Weekday: Weekday
-% ./f "DollarAmount = <dollars:Float>; EuroAmount = <euros:Float>; (lambda d:DollarAmount. case d of <dollars=x> ==> <euros=timesfloat x 1.1325> as EuroAmount)<dollars=39.5> as DollarAmount;"
-DollarAmount = <dollars:Float>
-EuroAmount = <euros:Float>
-<euros=44.73375> as EuroAmount: EuroAmount
-% ./f "DollarAmount = <dollars:Float>; EuroAmount = <euros:Float>; (lambda d:DollarAmount. case d of <dollars=x> ==> <euros=timesfloat x 1.1325> as EuroAmount)<euros=39.5> as EuroAmount;"
-DollarAmount = <dollars:Float>
-EuroAmount = <euros:Float>
-:1.61: parameter type mismatch
+% ./f "DollarAmount = <dollars:Float>; EuroAmount = <euros:Float>; dollarsToEuros = (lambda d:DollarAmount. case d of <dollars=x> ==> <euros=timesfloat x 1.1325> as EuroAmount); eurosToDollars = (lambda e:EuroAmount. case e of <euros=x> ==> <dollars=timesfloat x 0.883> as DollarAmount); mybankbalance = <dollars=39.50> as DollarAmount; eurosToDollars(dollarsToEuros(mybankbalance));"
+DollarAmount :: *
+EuroAmount :: *
+dollarsToEuros : DollarAmount -> EuroAmount
+eurosToDollars : EuroAmount -> DollarAmount
+mybankbalance : DollarAmount
+<dollars=39.49990125> as DollarAmount: DollarAmount
+% ./f "DollarAmount = <dollars:Float>; EuroAmount = <euros:Float>; dollarsToEuros = (lambda d:DollarAmount. case d of <dollars=x> ==> <euros=timesfloat x 1.1325> as EuroAmount); eurosToDollars = (lambda e:EuroAmount. case e of <euros=x> ==> <dollars=timesfloat x 0.883> as DollarAmount); mybankbalance = <dollars=39.50> as DollarAmount; dollarsToEuros(dollarsToEuros(mybankbalance));"
+DollarAmount :: *
+EuroAmount :: *
+dollarsToEuros : DollarAmount -> EuroAmount
+eurosToDollars : EuroAmount -> DollarAmount
+mybankbalance : DollarAmount
+:1.330: parameter type mismatch
 
 # 11.11 General Recursion
 

@@ -62,6 +62,7 @@ Command: Term          { fun ctx -> (let t = $1 ctx in Eval(tmInfo t,t)),ctx }
        | UCID TyBinder { fun ctx -> ((Bind($1.i,$1.v,$2 ctx)), addname ctx $1.v) }
 
 Binder: COLON Type { fun ctx -> VarBind ($2 ctx) }
+      | EQ Term    { fun ctx -> TmAbbBind($2 ctx, None) }
 
 Type: ArrowType { $1 }
 
