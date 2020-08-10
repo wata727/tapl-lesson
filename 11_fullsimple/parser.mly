@@ -6,6 +6,8 @@ open Support
 %token <Support.info> LAMBDA
 %token <Support.info> LET
 %token <Support.info> IN
+%token <Support.info> FIX
+%token <Support.info> LETREC
 %token <Support.info> AS
 %token <Support.info> IF
 %token <Support.info> THEN
@@ -92,18 +94,21 @@ NEFieldTypes: FieldType                    { fun ctx i -> [$1 ctx i] }
 FieldType: Type            { fun ctx i -> (string_of_int i, $1 ctx) }
          | LCID COLON Type { fun ctx i -> ($1.v, $3 ctx) }
 
-Term: AppTerm                           { $1 }
-    | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
-    | LAMBDA USCORE COLON Type DOT Term { fun ctx -> let ctx1 = addname ctx "_" in TmAbs($1,"_",$4 ctx, $6 ctx1) }
-    | IF Term THEN Term ELSE Term       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
-    | LET LCID EQ Term IN Term          { fun ctx -> TmLet($1, $2.v, $4 ctx, $6 (addname ctx $2.v)) }
-    | LET USCORE EQ Term IN Term        { fun ctx -> TmLet($1, "_", $4 ctx, $6 (addname ctx "_")) }
-    | CASE Term OF Cases                { fun ctx -> TmCase($1, $2 ctx, $4 ctx) }
+Term: AppTerm                                { $1 }
+    | LAMBDA LCID COLON Type DOT Term        { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
+    | LAMBDA USCORE COLON Type DOT Term      { fun ctx -> let ctx1 = addname ctx "_" in TmAbs($1,"_",$4 ctx, $6 ctx1) }
+    | IF Term THEN Term ELSE Term            { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
+    | LET LCID EQ Term IN Term               { fun ctx -> TmLet($1, $2.v, $4 ctx, $6 (addname ctx $2.v)) }
+    | LET USCORE EQ Term IN Term             { fun ctx -> TmLet($1, "_", $4 ctx, $6 (addname ctx "_")) }
+    | CASE Term OF Cases                     { fun ctx -> TmCase($1, $2 ctx, $4 ctx) }
+    | LETREC LCID COLON Type EQ Term IN Term { fun ctx -> let ctx1 = addname ctx $2.v in
+                                                          TmLet($1, $2.v, TmFix($1, TmAbs($1, $2.v, $4 ctx, $6 ctx1)), $8 ctx1) }
 
 AppTerm: PathTerm                     { $1 }
        | AppTerm PathTerm             { fun ctx -> let e1 = $1 ctx in
                                                    let e2 = $2 ctx in
                                                    TmApp(tmInfo e1,e1,e2) }
+       | FIX PathTerm                 { fun ctx -> TmFix($1, $2 ctx) }
        | TIMESFLOAT PathTerm PathTerm { fun ctx -> TmTimesfloat($1,$2 ctx,$3 ctx) }
        | SUCC PathTerm                { fun ctx -> TmSucc($1,$2 ctx) }
        | PRED PathTerm                { fun ctx -> TmPred($1,$2 ctx) }

@@ -16,6 +16,8 @@ rule main = parse
   | "lambda"                         { Parser.LAMBDA(info lexbuf) }
   | "let"                            { Parser.LET(info lexbuf) }
   | "in"                             { Parser.IN(info lexbuf) }
+  | "fix"                            { Parser.FIX(info lexbuf) }
+  | "letrec"                         { Parser.LETREC(info lexbuf) }
   | "as"                             { Parser.AS(info lexbuf) }
   | "if"                             { Parser.IF(info lexbuf) }
   | "then"                           { Parser.THEN(info lexbuf) }

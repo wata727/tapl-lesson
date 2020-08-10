@@ -6,6 +6,18 @@ See chapter 11: Simple Extensions.
 
 ```console
 % make
+ocamlc -c support.ml
+ocamlc -c core.ml
+ocamlyacc -v parser.mly
+ocamlc -c parser.mli
+ocamlc -c parser.ml
+ocamllex lexer.mll
+118 states, 5720 transitions, table size 23588 bytes
+ocamlc -c lexer.ml
+ocamlc -c main.ml
+Linking f
+ocamlc -o f support.cmo core.cmo parser.cmo lexer.cmo main.cmo
+rm lexer.ml
 ```
 
 ## Usage
@@ -122,5 +134,18 @@ mybankbalance : DollarAmount
 :1.330: parameter type mismatch
 
 # 11.11 General Recursion
-
+% ./f "ff = lambda ie:Nat -> Bool. (lambda x:Nat. if iszero x then true else if iszero(pred x) then false else ie (pred(pred x))); iseven = fix ff; iseven 7;"
+ff : (Nat -> Bool) -> Nat -> Bool
+iseven : Nat -> Bool
+false: Bool
+% ./f "ff = lambda ieio:{iseven:Nat -> Bool,isodd:Nat -> Bool}. {iseven=(lambda x:Nat. if iszero x then true else ieio.isodd (pred x)),isodd=(lambda x:Nat. if iszero x then false else ieio.iseven (pred x))}; r = fix ff; iseven = r.iseven; iseven 7;"
+ff : {iseven:Nat -> Bool,isodd:Nat -> Bool} -> {iseven:Nat -> Bool,isodd:Nat -> Bool}
+r : {iseven:Nat -> Bool,isodd:Nat -> Bool}
+iseven : Nat -> Bool
+false: Bool
+% ./f "diverge = lambda _:Unit. fix (lambda x:T. x); diverge unit;"
+diverge : Unit -> T
+Fatal error: exception Stack_overflow
+% ./f "letrec iseven:Nat -> Bool = lambda x:Nat. if iszero x then true else if iszero (pred x) then false else iseven (pred(pred x)) in iseven 7;"
+false: Bool
 ```

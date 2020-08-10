@@ -34,6 +34,7 @@ type term =
   | TmProj of info * term * string
   | TmCase of info * term * (string * (string * term)) list
   | TmTag of info * string * term * ty
+  | TmFix of info * term
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -56,6 +57,7 @@ let tmInfo t = match t with
   | TmProj(fi, _, _) -> fi
   | TmCase(fi, _, _) -> fi
   | TmTag(fi, _, _, _) -> fi
+  | TmFix(fi, _) -> fi
 
 type binding =
     NameBind
@@ -182,6 +184,7 @@ let rec printtm ctx t = match t with
         | c::rest -> pc c; pr " | "; p rest
       in p cases
   | TmTag(fi, l, t, tyT) -> pr "<"; pr l; pr "="; printtm ctx t; pr ">"; pr " as "; printty ctx tyT
+  | TmFix(fi, t1) -> pr "fix "; printtm ctx t1
 
 let prbinding ctx b = match b with
     NameBind -> () 
@@ -229,6 +232,7 @@ let termShift d t =
   | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
   | TmCase(fi, t, cases) -> TmCase(fi, walk c t, List.map (fun (li,(xi,ti)) -> (li,(xi,walk (c+1) ti))) cases)
   | TmTag(fi, l, t1, tyT) -> TmTag(fi, l, walk c t1, typeShiftAbove d c tyT)
+  | TmFix(fi, t1) -> TmFix(fi, walk c t1)
   in walk 0 t
 
 let termSubst j s t =
@@ -253,6 +257,7 @@ let termSubst j s t =
   | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
   | TmCase(fi, t, cases) -> TmCase(fi, walk c t, List.map (fun (li,(xi,ti)) -> (li,(xi,walk (c+1) ti))) cases)
   | TmTag(fi, l, t1, tyT) -> TmTag(fi, l, walk c t1, tyT)
+  | TmFix(fi, t1) -> TmFix(fi, walk c t1)
   in walk 0 t
 
 let termSubstTop s t =
@@ -371,6 +376,13 @@ let rec eval1 ctx t = match t with
   | TmTag(fi, l, t1, tyT) ->
       let t1' = eval1 ctx t1 in
       TmTag(fi, l, t1', tyT)
+  | TmFix(fi, v1) as t when isval ctx v1 ->
+      (match v1 with
+         TmAbs(_, _, _, t12) -> termSubstTop t t12
+       | _ -> raise NoRuleApplies)
+  | TmFix(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmFix(fi, t1')
   | _ ->
       raise NoRuleApplies
 
@@ -501,3 +513,10 @@ let rec typeof ctx t = match t with
                   else error fi "field does not have expected type"
               with Not_found -> error fi ("label "^li^" not found"))
          | _ -> error fi "Annotation is not a variant type")
+  | TmFix(fi, t1) ->
+      let tyT1 = typeof ctx t1 in
+      (match simplifyty ctx tyT1 with
+           TyArr(tyT11, tyT12) ->
+             if (=) tyT11 tyT12 then tyT12
+             else error fi "result of body not compatible with domain"
+         | _ -> error fi "arrow type expected")
