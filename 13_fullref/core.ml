@@ -2,8 +2,12 @@ open Format
 open Support
 
 type ty =
-    TyArr of ty * ty
+    TyVar of int * int
+  | TyId of string
+  | TyArr of ty * ty
   | TyBool
+  | TyUnit
+  | TyNat
 
 type term =
     TmVar of info * int * int
@@ -12,6 +16,11 @@ type term =
   | TmTrue of info
   | TmFalse of info
   | TmIf of info * term * term * term
+  | TmZero of info
+  | TmSucc of info * term
+  | TmPred of info * term
+  | TmIsZero of info * term
+  | TmUnit of info
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -20,8 +29,18 @@ let tmInfo t = match t with
   | TmTrue(fi) -> fi
   | TmFalse(fi) -> fi
   | TmIf(fi, _, _, _) -> fi
+  | TmZero(fi) -> fi
+  | TmSucc(fi, _) -> fi
+  | TmPred(fi, _) -> fi
+  | TmIsZero(fi, _) -> fi
+  | TmUnit(fi) -> fi
 
-type binding = NameBind | VarBind of ty
+type binding =
+    NameBind
+  | TyVarBind
+  | VarBind of ty
+  | TyAbbBind of ty
+  | TmAbbBind of term * (ty option)
 type context = (string * binding) list
 
 let emptycontext = []
@@ -44,24 +63,35 @@ type command =
   | Eval of info * term
   | Bind of info * string * binding
 
-let rec printty_Type tyT = match tyT with
-    tyT -> printty_ArrowType tyT
-and printty_ArrowType tyT = match tyT with
+let rec printty_Type ctx tyT = match tyT with
+    tyT -> printty_ArrowType ctx tyT
+and printty_ArrowType ctx tyT = match tyT with
     TyArr(tyT1, tyT2) ->
-      printty_AType tyT1;
+      printty_AType ctx tyT1;
       pr " -> ";
-      printty_ArrowType tyT2;
-  | tyT -> printty_AType tyT
-and printty_AType tyT = match tyT with
-    TyBool -> pr "Bool"
-  | tyT -> pr "("; printty_Type tyT; pr ")"
+      printty_ArrowType ctx tyT2;
+  | tyT -> printty_AType ctx tyT
+and printty_AType ctx tyT = match tyT with
+    TyVar(x,n) ->
+      if ctxlength ctx = n then
+        pr (index2name dummyinfo ctx x)
+      else
+        pr ("[bad index: " ^ (string_of_int x) ^ "/" ^ (string_of_int n)
+          ^ " in {"
+          ^ (List.fold_left (fun s (x,_) -> s ^ " " ^ x) "" ctx)
+          ^ " }]")
+  | TyId(b) -> pr b
+  | TyBool -> pr "Bool"
+  | TyUnit -> pr "Unit"
+  | TyNat -> pr "Nat"
+  | tyT -> pr "("; printty_Type ctx tyT; pr ")"
 
-let printty tyT = printty_Type tyT
+let printty ctx tyT = printty_Type ctx tyT
 
 let rec printtm ctx t = match t with
     TmAbs(fi, x, tyT1, t1) ->
       let (ctx', x') = pickfreshname ctx x in
-      pr "(lambda "; pr x'; pr ":"; printty tyT1; pr ". "; printtm ctx' t1; pr ")"
+      pr "(lambda "; pr x'; pr ":"; printty ctx tyT1; pr ". "; printtm ctx' t1; pr ")"
   | TmApp(fi, t1, t2) ->
       pr "("; printtm ctx t1; pr " "; printtm ctx t2; pr ")"
   | TmVar(fi, x, n) ->
@@ -73,10 +103,35 @@ let rec printtm ctx t = match t with
   | TmFalse(fi) -> pr "false"
   | TmIf(fi, t1, t2, t3) ->
       pr "if "; printtm ctx t1; pr " then "; printtm ctx t2; pr " else "; printtm ctx t3
+  | TmZero(fi) -> pr "0"
+  | TmSucc(fi, t1) ->
+      let rec f n t = match t with
+          TmZero(_) -> pr (string_of_int n)
+        | TmSucc(_,s) -> f (n+1) s
+        | _ -> (pr "(succ "; printtm ctx t1; pr ")")
+      in f 1 t1
+  | TmPred(fi, t1) -> pr "pred "; printtm ctx t1
+  | TmIsZero(fi, t1) -> pr "iszero "; printtm ctx t1
+  | TmUnit(fi) -> pr "unit"
 
 let prbinding ctx b = match b with
     NameBind -> () 
-  | VarBind(tyT) -> pr ": "; printty tyT
+  | TyVarBind -> ()
+  | VarBind(tyT) -> pr ": "; printty ctx tyT
+  | TyAbbBind(tyT) -> pr "= "; printty ctx tyT
+  | TmAbbBind(t, tyT) -> pr "= "; printtm ctx t
+
+let typeShiftAbove d c tyT =
+  let rec walk c tyT = match tyT with
+    TyVar(x, n) -> if x>=c then TyVar(x+d,n+d) else TyVar(x,n+d)
+  | TyId(b) as tyT -> tyT
+  | TyUnit -> TyUnit
+  | TyBool -> TyBool
+  | TyNat -> TyNat
+  | TyArr(tyT1,tyT2) -> TyArr(walk c tyT1,walk c tyT2)
+  in walk c tyT
+
+let typeShift d tyT = typeShiftAbove d 0 tyT
 
 let termShift d t =
   let rec walk c t = match t with
@@ -87,6 +142,11 @@ let termShift d t =
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
+  | TmZero(fi) -> TmZero(fi)
+  | TmSucc(fi, t1) -> TmSucc(fi, walk c t1)
+  | TmPred(fi, t1) -> TmPred(fi, walk c t1)
+  | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
+  | TmUnit(fi) as t -> t
   in walk 0 t
 
 let termSubst j s t =
@@ -97,15 +157,46 @@ let termSubst j s t =
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
+  | TmZero(fi) -> TmZero(fi)
+  | TmSucc(fi, t1) -> TmSucc(fi, walk c t1)
+  | TmPred(fi, t1) -> TmPred(fi, walk c t1)
+  | TmIsZero(fi, t1) -> TmIsZero(fi, walk c t1)
+  | TmUnit(fi) as t -> t
   in walk 0 t
 
 let termSubstTop s t =
   termShift (-1) (termSubst 0 (termShift 1 s) t)
 
+let bindingshift d bind = match bind with
+    NameBind -> NameBind
+  | TyVarBind -> TyVarBind
+  | VarBind(tyT) -> VarBind(typeShift d tyT)
+  | TyAbbBind(tyT) -> TyAbbBind(typeShift d tyT)
+  | TmAbbBind(t, tyT_opt) ->
+      let tyT_opt' = match tyT_opt with
+                       None -> None
+                     | Some(tyT) -> Some(typeShift d tyT) in
+      TmAbbBind(termShift d t, tyT_opt')
+
+let getbinding fi ctx i =
+  try
+    let (_, bind) = List.nth ctx i in
+    bindingshift (i+1) bind
+  with Failure _ ->
+    let msg = Printf.sprintf "Variable lookup failure: offset: %d, ctx size: %d" in
+    error fi (msg i (List.length ctx))
+
+let rec isnumericval ctx t = match t with
+    TmZero(_) -> true
+  | TmSucc(_, t1) -> isnumericval ctx t1
+  | _ -> false
+
 let rec isval ctx t = match t with
     TmTrue(_) -> true
   | TmFalse(_) -> true
   | TmAbs(_, _, _, _) -> true
+  | TmUnit(_) -> true
+  | t when isnumericval ctx t -> true
   | _ -> false
 
 exception NoRuleApplies
@@ -119,11 +210,28 @@ let rec eval1 ctx t = match t with
   | TmApp(fi, t1, t2) ->
       let t1' = eval1 ctx t1 in
       TmApp(fi, t1', t2)
+  | TmVar(fi, n, _) ->
+      (match getbinding fi ctx n with
+           TmAbbBind(t, _) -> t
+         | _ -> raise NoRuleApplies)
   | TmIf(_, TmTrue(_), t2, t3) -> t2
   | TmIf(_, TmFalse(_), t2, t3) -> t3
   | TmIf(fi, t1, t2, t3) ->
       let t1' = eval1 ctx t1 in
       TmIf(fi, t1', t2, t3)
+  | TmSucc(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmSucc(fi, t1')
+  | TmPred(_, TmZero(_)) -> TmZero(dummyinfo)
+  | TmPred(_, TmSucc(_,nv1)) when (isnumericval ctx nv1) -> nv1
+  | TmPred(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmPred(fi, t1')
+  | TmIsZero(fi, TmZero(_)) -> TmTrue(dummyinfo)
+  | TmIsZero(fi, TmSucc(_,nv1)) when (isnumericval ctx nv1) -> TmFalse(dummyinfo)
+  | TmIsZero(fi, t1) ->
+      let t1' = eval1 ctx t1 in
+      TmIsZero(fi, t1')
   | _ ->
       raise NoRuleApplies
 
@@ -132,16 +240,35 @@ let rec eval ctx t =
       in eval ctx t'
   with NoRuleApplies -> t
 
-let getbinding fi ctx i =
-  try
-    let (_, bind) = List.nth ctx i in
-    bind
-  with Failure _ ->
-    let msg = Printf.sprintf "Variable lookup failure: offset: %d, ctx size: %d" in
-    error fi (msg i (List.length ctx))
+let evalbinding ctx b = match b with
+    TmAbbBind(t, tyT) ->
+      let t' = eval ctx t in
+      TmAbbBind(t', tyT)
+  | bind -> bind
+
 let getTypeFromContext fi ctx i = match getbinding fi ctx i with
     VarBind(tyT) -> tyT
+  | TmAbbBind(_, Some(tyT)) -> tyT
+  | TmAbbBind(_, None) -> error fi ("No type recorded for variable " ^ (index2name fi ctx i))
   | _ -> error fi ("getTypeFromContext: Wrong kind of binding for variable " ^ (index2name fi ctx i))
+
+let istyabb ctx i = match getbinding dummyinfo ctx i with
+    TyAbbBind(tyT) -> true
+  | _ -> false
+
+let gettyabb ctx i = match getbinding dummyinfo ctx i with
+    TyAbbBind(tyT) -> tyT
+  | _ -> raise NoRuleApplies
+
+let rec computety ctx tyT = match tyT with
+    TyVar(i, _) when istyabb ctx i -> gettyabb ctx i
+  | _ -> raise NoRuleApplies
+
+let rec simplifyty ctx tyT =
+  try
+    let tyT' = computety ctx tyT in
+    simplifyty ctx tyT'
+  with NoRuleApplies -> tyT
 
 let rec typeof ctx t = match t with
     TmVar(fi, i, _) -> getTypeFromContext fi ctx i
@@ -152,7 +279,7 @@ let rec typeof ctx t = match t with
   | TmApp(fi, t1, t2) ->
       let tyT1 = typeof ctx t1 in
       let tyT2 = typeof ctx t2 in
-      (match tyT1 with
+      (match simplifyty ctx tyT1 with
           TyArr(tyT11, tyT12) ->
             if (=) tyT2 tyT11 then tyT12
             else error fi "parameter type mismatch"
@@ -165,3 +292,14 @@ let rec typeof ctx t = match t with
         if (=) tyT2 (typeof ctx t3) then tyT2
         else error fi "arms of conditional have different types"
       else error fi "guard of conditional not a boolean"
+  | TmZero(fi) -> TyNat
+  | TmSucc(fi, t1) ->
+      if (=) (typeof ctx t1) TyNat then TyNat
+      else error fi "argument of succ is not a number"
+  | TmPred(fi, t1) ->
+      if (=) (typeof ctx t1) TyNat then TyNat
+      else error fi "argument of pred is not a number"
+  | TmIsZero(fi, t1) ->
+      if (=) (typeof ctx t1) TyNat then TyBool
+      else error fi "argument of iszero is not a number"
+  | TmUnit(fi) -> TyUnit
