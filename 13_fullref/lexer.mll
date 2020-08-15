@@ -21,11 +21,13 @@ rule main = parse
   | "false"                          { Parser.FALSE(info lexbuf) }
   | "Bool"                           { Parser.BOOL(info lexbuf) }
   | "Unit"                           { Parser.UUNIT (info lexbuf) }
+  | "Ref"                            { Parser.RREF(info lexbuf) }
   | "Nat"                            { Parser.NAT(info lexbuf) }
   | "succ"                           { Parser.SUCC(info lexbuf) }
   | "pred"                           { Parser.PRED(info lexbuf) }
   | "iszero"                         { Parser.ISZERO(info lexbuf) }
   | "unit"                           { Parser.UNIT(info lexbuf) }
+  | "ref"                            { Parser.REF(info lexbuf) }
   | "."                              { Parser.DOT(info lexbuf) }
   | "("                              { Parser.LPAREN(info lexbuf) }
   | ")"                              { Parser.RPAREN(info lexbuf) }
@@ -35,6 +37,8 @@ rule main = parse
   | ":"                              { Parser.COLON(info lexbuf) }
   | "->"                             { Parser.ARROW(info lexbuf) }
   | "="                              { Parser.EQ(info lexbuf) }
+  | ":="                             { Parser.COLONEQ(info lexbuf) }
+  | "!"                              { Parser.BANG(info lexbuf) }
   | ['0'-'9']+                       { Parser.INTV{i=(info lexbuf);v=(int_of_string (text lexbuf))} }
   | ['A'-'Z'] ['A'-'Z' 'a'-'z' '_']* { Parser.UCID {i=(info lexbuf);v=(text lexbuf)} }
   | ['A'-'Z' 'a'-'z' '_']*           { Parser.LCID {i=(info lexbuf);v=(text lexbuf)} }

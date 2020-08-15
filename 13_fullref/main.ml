@@ -30,31 +30,31 @@ let prbindingty ctx b = match b with
            None -> printty ctx (typeof ctx t)
          | Some(tyT) -> printty ctx tyT)
 
-let process_command ctx cmd = match cmd with
+let process_command (ctx,store) cmd = match cmd with
   | Eval(fi, t) ->
       let tyT = typeof ctx t in
-      let t' = eval ctx t in
+      let t',store = eval ctx store t in
       printtm ctx t';
       pr ": ";
       printty ctx tyT;
       force_newline();
-      ctx
+      (ctx,store)
   | Bind(fi, x, bind) ->
       let bind = checkbinding fi ctx bind in
-      let bind' = evalbinding ctx bind in
+      let bind',store' = evalbinding ctx store bind in
       pr x; pr " "; prbindingty ctx bind'; force_newline();
-      addbinding ctx x bind'
+      addbinding ctx x bind', (shiftstore 1 store')
 
-let process_input s ctx = 
+let process_input s (ctx,store) =
   let cmds,_ = parse s ctx in
-  let g ctx c =
+  let g (ctx,store) c =
     open_hvbox 0;
-    let ret = process_command ctx c in
+    let ret = process_command (ctx,store) c in
     print_flush();
     ret
   in
-    List.fold_left g ctx cmds
+    List.fold_left g (ctx,store) cmds
 
-let main () = let _ = process_input Sys.argv.(1) emptycontext in ()
+let main () = let _ = process_input Sys.argv.(1) (emptycontext, emptystore) in ()
 
 let _ = main()

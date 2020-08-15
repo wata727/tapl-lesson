@@ -11,7 +11,9 @@ open Support
 %token <Support.info> FALSE
 %token <Support.info> BOOL
 %token <Support.info> UUNIT
+%token <Support.info> RREF
 %token <Support.info> UNIT
+%token <Support.info> REF
 %token <Support.info> SUCC
 %token <Support.info> PRED
 %token <Support.info> ISZERO
@@ -20,7 +22,9 @@ open Support
 %token <string Support.withinfo> LCID
 %token <int Support.withinfo> INTV
 %token <Support.info> ARROW
+%token <Support.info> BANG
 %token <Support.info> COLON
+%token <Support.info> COLONEQ
 %token <Support.info> DOT
 %token <Support.info> EQ
 %token <Support.info> EOF
@@ -47,7 +51,8 @@ Command: Term          { fun ctx -> (let t = $1 ctx in Eval(tmInfo t,t)),ctx }
 Binder: COLON Type { fun ctx -> VarBind ($2 ctx) }
       | EQ Term    { fun ctx -> TmAbbBind($2 ctx, None) }
 
-Type: ArrowType { $1 }
+Type: ArrowType  { $1 }
+    | RREF AType { fun ctx -> TyRef($2 ctx) }
 
 AType: LPAREN Type RPAREN { $2 }
      | UCID               { fun ctx -> if isnamebound ctx $1.v then TyVar(name2index $1.i ctx $1.v, ctxlength ctx)
@@ -66,11 +71,14 @@ Term: AppTerm                           { $1 }
     | LAMBDA LCID COLON Type DOT Term   { fun ctx -> let ctx1 = addname ctx $2.v in TmAbs($1,$2.v,$4 ctx, $6 ctx1) }
     | LAMBDA USCORE COLON Type DOT Term { fun ctx -> let ctx1 = addname ctx "_" in TmAbs($1,"_",$4 ctx, $6 ctx1) }
     | IF Term THEN Term ELSE Term       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
+    | AppTerm COLONEQ AppTerm           { fun ctx -> TmAssign($2, $1 ctx, $3 ctx) }
 
 AppTerm: ATerm                  { $1 }
        | AppTerm ATerm          { fun ctx -> let e1 = $1 ctx in
                                              let e2 = $2 ctx in
                                              TmApp(tmInfo e1,e1,e2) }
+       | REF ATerm              { fun ctx -> TmRef($1, $2 ctx) }
+       | BANG ATerm             { fun ctx -> TmDeref($1, $2 ctx) }
        | SUCC ATerm             { fun ctx -> TmSucc($1,$2 ctx) }
        | PRED ATerm             { fun ctx -> TmPred($1,$2 ctx) }
        | ISZERO ATerm           { fun ctx -> TmIsZero($1,$2 ctx) }
