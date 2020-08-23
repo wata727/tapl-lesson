@@ -5,6 +5,8 @@ type ty =
     TyArr of ty * ty
   | TyBool
   | TyRecord of (string * ty) list
+  | TyTop
+  | TyBot
 
 type term =
     TmVar of info * int * int
@@ -68,6 +70,8 @@ and printty_AType tyT = match tyT with
         | f::rest -> pf i f; pr ","; p (i+1) rest
       in pr "{"; p 1 fields; pr "}"
   | TyBool -> pr "Bool"
+  | TyTop -> pr "Top"
+  | TyBot -> pr "Bot"
   | tyT -> pr "("; printty_Type tyT; pr ")"
 
 let printty tyT = printty_Type tyT
@@ -189,6 +193,22 @@ let getTypeFromContext fi ctx i = match getbinding fi ctx i with
     VarBind(tyT) -> tyT
   | _ -> error fi ("getTypeFromContext: Wrong kind of binding for variable " ^ (index2name fi ctx i))
 
+let rec subtype tyS tyT =
+  (=) tyS tyT ||
+  match (tyS, tyT) with
+    (_, TyTop) -> true
+  | (TyBot, _) -> true
+  | (TyArr(tyS1, tyS2), TyArr(tyT1, tyT2)) ->
+      (subtype tyT1 tyS1) && (subtype tyS2 tyT1)
+  | (TyRecord(fS), TyRecord(fT)) ->
+      List.for_all
+        (fun (li, tyTi) ->
+           try let tySi = List.assoc li fS in
+               subtype tySi tyTi
+           with Not_found -> false)
+        fT
+  | (_, _) -> false
+
 let rec typeof ctx t = match t with
     TmVar(fi, i, _) -> getTypeFromContext fi ctx i
   | TmAbs(fi, x, tyT1, t2) ->
@@ -200,8 +220,9 @@ let rec typeof ctx t = match t with
       let tyT2 = typeof ctx t2 in
       (match tyT1 with
           TyArr(tyT11, tyT12) ->
-            if (=) tyT2 tyT11 then tyT12
+            if subtype tyT2 tyT11 then tyT12
             else error fi "parameter type mismatch"
+        | TyBot -> TyBot
         | _ -> error fi "arrow type expected")
   | TmTrue(fi) -> TyBool
   | TmFalse(fi) -> TyBool
@@ -219,4 +240,5 @@ let rec typeof ctx t = match t with
           TyRecord(fieldtys) -> 
             (try List.assoc l fieldtys
              with Not_found -> error fi ("label "^l^" not found"))
+        | TyBot -> TyBot
         | _ -> error fi "Expected record type")

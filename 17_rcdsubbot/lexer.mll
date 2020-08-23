@@ -20,6 +20,8 @@ rule main = parse
   | "true"                 { Parser.TRUE(info lexbuf) }
   | "false"                { Parser.FALSE(info lexbuf) }
   | "Bool"                 { Parser.BOOL(info lexbuf) }
+  | "Top"                  { Parser.TTOP(info lexbuf) }
+  | "Bot"                  { Parser.TBOT(info lexbuf) }
   | "."                    { Parser.DOT(info lexbuf) }
   | "{"                    { Parser.LCURLY(info lexbuf) }
   | "}"                    { Parser.RCURLY(info lexbuf) }

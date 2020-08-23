@@ -10,6 +10,8 @@ open Support
 %token <Support.info> TRUE
 %token <Support.info> FALSE
 %token <Support.info> BOOL
+%token <Support.info> TTOP
+%token <Support.info> TBOT
 %token <string Support.withinfo> LCID
 %token <int Support.withinfo> INTV
 %token <Support.info> ARROW
@@ -50,6 +52,8 @@ Type: ArrowType { $1 }
 AType: LPAREN Type RPAREN       { $2 }
      | BOOL                     { fun ctx -> TyBool }
      | LCURLY FieldTypes RCURLY { fun ctx -> TyRecord($2 ctx 1) }
+     | TTOP                     { fun ctx -> TyTop }
+     | TBOT                     { fun ctx -> TyBot }
 
 FieldTypes:              { fun ctx i -> [] }
           | NEFieldTypes { $1 }
