@@ -4,6 +4,7 @@ open Support
 type ty =
     TyArr of ty * ty
   | TyBool
+  | TyRecord of (string * ty) list
 
 type term =
     TmVar of info * int * int
@@ -12,6 +13,8 @@ type term =
   | TmTrue of info
   | TmFalse of info
   | TmIf of info * term * term * term
+  | TmRecord of info * (string * term) list
+  | TmProj of info * term * string
 
 let tmInfo t = match t with
     TmVar(fi, _, _) -> fi
@@ -20,6 +23,8 @@ let tmInfo t = match t with
   | TmTrue(fi) -> fi
   | TmFalse(fi) -> fi
   | TmIf(fi, _, _, _) -> fi
+  | TmRecord(fi, _) -> fi
+  | TmProj(fi, _, _) -> fi
 
 type binding = NameBind | VarBind of ty
 type context = (string * binding) list
@@ -53,7 +58,16 @@ and printty_ArrowType tyT = match tyT with
       printty_ArrowType tyT2;
   | tyT -> printty_AType tyT
 and printty_AType tyT = match tyT with
-    TyBool -> pr "Bool"
+    TyRecord(fields) ->
+      let pf i (li,tyTi)  =
+        if (li <> (string_of_int i)) then (pr li; pr ":");
+        printty_Type tyTi
+      in let rec p i l = match l with
+          [] -> ()
+        | [f] -> pf i f
+        | f::rest -> pf i f; pr ","; p (i+1) rest
+      in pr "{"; p 1 fields; pr "}"
+  | TyBool -> pr "Bool"
   | tyT -> pr "("; printty_Type tyT; pr ")"
 
 let printty tyT = printty_Type tyT
@@ -73,6 +87,16 @@ let rec printtm ctx t = match t with
   | TmFalse(fi) -> pr "false"
   | TmIf(fi, t1, t2, t3) ->
       pr "if "; printtm ctx t1; pr " then "; printtm ctx t2; pr " else "; printtm ctx t3
+  | TmRecord(fi, fields) ->
+      let pf i (li,ti) =
+        if (li <> (string_of_int i)) then (pr li; pr "=");
+        printtm ctx ti
+      in let rec p i l = match l with
+          [] -> ()
+        | [f] -> pf i f
+        | f::rest -> pf i f; pr ","; p (i+1) rest
+      in pr "{"; p 1 fields; pr "}";
+  | TmProj(fi, t1, l) -> printtm ctx t1; pr "."; pr l
 
 let prbinding ctx b = match b with
     NameBind -> () 
@@ -87,6 +111,8 @@ let termShift d t =
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
+  | TmRecord(fi, fields) -> TmRecord(fi, List.map (fun (li, ti) -> (li, walk c ti)) fields)
+  | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
   in walk 0 t
 
 let termSubst j s t =
@@ -97,6 +123,8 @@ let termSubst j s t =
   | TmTrue(fi) as t -> t
   | TmFalse(fi) as t -> t
   | TmIf(fi, t1, t2, t3) -> TmIf(fi, walk c t1, walk c t2, walk c t3)
+  | TmRecord(fi, fields) -> TmRecord(fi, List.map (fun (li, ti) -> (li, walk c ti)) fields)
+  | TmProj(fi, t1, l) -> TmProj(fi, walk c t1, l)
   in walk 0 t
 
 let termSubstTop s t =
@@ -106,6 +134,7 @@ let rec isval ctx t = match t with
     TmTrue(_) -> true
   | TmFalse(_) -> true
   | TmAbs(_, _, _, _) -> true
+  | TmRecord(_, fields) -> List.for_all (fun (l, ti) -> isval ctx ti) fields
   | _ -> false
 
 exception NoRuleApplies
@@ -124,6 +153,23 @@ let rec eval1 ctx t = match t with
   | TmIf(fi, t1, t2, t3) ->
       let t1' = eval1 ctx t1 in
       TmIf(fi, t1', t2, t3)
+  | TmRecord(fi, fields) ->
+      let rec evalfield l = match l with
+        [] -> raise NoRuleApplies
+      | (l, vi)::rest when isval ctx vi ->
+          let rest' = evalfield rest in
+          (l, vi)::rest'
+      | (l, ti)::rest ->
+          let ti' = eval1 ctx ti in
+          (l, ti')::rest
+      in let fields' = evalfield fields in
+      TmRecord(fi, fields')
+  | TmProj(fi, (TmRecord(_, fields) as v1), l) when isval ctx v1 ->
+      (try List.assoc l fields
+       with Not_found -> raise NoRuleApplies)
+  | TmProj(fi, t1, l) ->
+      let t1' = eval1 ctx t1 in
+      TmProj(fi, t1', l)
   | _ ->
       raise NoRuleApplies
 
@@ -165,3 +211,12 @@ let rec typeof ctx t = match t with
         if (=) tyT2 (typeof ctx t3) then tyT2
         else error fi "arms of conditional have different types"
       else error fi "guard of conditional not a boolean"
+  | TmRecord(fi, fields) ->
+      let fieldtys = List.map (fun (li, ti) -> (li, typeof ctx ti)) fields in
+      TyRecord(fieldtys)
+  | TmProj(fi, t1, l) ->
+      (match typeof ctx t1 with
+          TyRecord(fieldtys) -> 
+            (try List.assoc l fieldtys
+             with Not_found -> error fi ("label "^l^" not found"))
+        | _ -> error fi "Expected record type")
